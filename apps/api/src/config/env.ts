@@ -1,8 +1,9 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
-dotenv.config();
+dotenv.config({ path: path.resolve(process.cwd(), '.env'), override: true });
+dotenv.config({ path: path.resolve(process.cwd(), '../../.env'), override: true });
+dotenv.config({ override: true });
 
 export const ENV = {
   NODE_ENV: process.env.NODE_ENV || 'development',

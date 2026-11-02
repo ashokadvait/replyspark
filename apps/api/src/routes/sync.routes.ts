@@ -39,7 +39,11 @@ export async function syncRoutes(fastify: FastifyInstance) {
 
     for (const loc of locations) {
       const refreshToken = loc.googleConnection?.encryptedRefreshToken || 'mock-token';
-      const fetched = await client.fetchReviews(refreshToken, loc.googleLocationResourceName);
+      const fetched = await client.fetchReviews(
+        refreshToken,
+        loc.googleLocationResourceName,
+        loc.googleAccountResourceName || undefined
+      );
 
       for (const rev of fetched) {
         // Upsert review

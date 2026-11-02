@@ -39,6 +39,12 @@ export class LiveGoogleBusinessProfileClient implements IGoogleBusinessProfileCl
   private parseGoogleError(status: number, errText: string): string {
     try {
       const json = JSON.parse(errText);
+      if (
+        (json.error?.code === 403 || status === 403) &&
+        (errText.includes('mybusiness.googleapis.com') || errText.includes('SERVICE_DISABLED'))
+      ) {
+        return 'Google My Business API (mybusiness.googleapis.com) must be enabled in your Google Cloud Console project. Please enable it by visiting: https://console.developers.google.com/apis/api/mybusiness.googleapis.com/overview?project=14934005381';
+      }
       if (json.error?.code === 429 && errText.includes('DefaultRequestsPerMinutePerProject')) {
         return 'Google Business Profile API quota is 0. Google sets newly enabled GBP APIs to 0 quota until the project is approved via the Google Business Profile API Access Request form. Please submit the access request in Google Cloud.';
       }
@@ -94,14 +100,36 @@ export class LiveGoogleBusinessProfileClient implements IGoogleBusinessProfileCl
     }));
   }
 
-  async fetchReviews(refreshToken: string, locationResourceName: string): Promise<SyncedReviewDto[]> {
+  async fetchReviews(
+    refreshToken: string,
+    locationResourceName: string,
+    accountResourceName?: string
+  ): Promise<SyncedReviewDto[]> {
     const accessToken = await this.getAccessToken(refreshToken);
-    const res = await fetch(`${this.baseReviewsUrl}/${locationResourceName}/reviews`, {
+
+    // In Google My Business API v4, reviews endpoint requires:
+    // https://mybusiness.googleapis.com/v4/accounts/{accountId}/locations/{locationId}/reviews
+    let url: string;
+    if (locationResourceName.startsWith('accounts/')) {
+      url = `${this.baseReviewsUrl}/${locationResourceName}/reviews`;
+    } else if (accountResourceName) {
+      url = `${this.baseReviewsUrl}/${accountResourceName}/${locationResourceName}/reviews`;
+    } else {
+      // Auto-discover the account if not provided
+      const accounts = await this.getAccounts(refreshToken);
+      const acc = accounts[0]?.name;
+      url = acc
+        ? `${this.baseReviewsUrl}/${acc}/${locationResourceName}/reviews`
+        : `${this.baseReviewsUrl}/${locationResourceName}/reviews`;
+    }
+
+    const res = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
 
     if (!res.ok) {
-      throw new Error(`Google GBP Reviews error: ${await res.text()}`);
+      const errText = await res.text();
+      throw new Error(`Google GBP Reviews error: ${this.parseGoogleError(res.status, errText)}`);
     }
 
     const data = await res.json();
@@ -138,8 +166,8 @@ export class LiveGoogleBusinessProfileClient implements IGoogleBusinessProfileCl
     );
 
     if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Google GBP Reply publication error: ${err}`);
+      const errText = await res.text();
+      throw new Error(`Google GBP Reply publication error: ${this.parseGoogleError(res.status, errText)}`);
     }
 
     const data = await res.json();

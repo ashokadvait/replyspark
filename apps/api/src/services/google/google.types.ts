@@ -36,7 +36,7 @@ export interface PublishReplyResult {
 export interface IGoogleBusinessProfileClient {
   getAccounts(refreshToken: string): Promise<GoogleAccountDto[]>;
   getLocations(refreshToken: string, accountResourceName: string): Promise<GoogleLocationDto[]>;
-  fetchReviews(refreshToken: string, locationResourceName: string): Promise<SyncedReviewDto[]>;
+  fetchReviews(refreshToken: string, locationResourceName: string, accountResourceName?: string): Promise<SyncedReviewDto[]>;
   publishReply(
     refreshToken: string,
     locationResourceName: string,

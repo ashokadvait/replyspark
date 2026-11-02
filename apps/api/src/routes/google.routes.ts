@@ -197,6 +197,8 @@ export async function googleRoutes(fastify: FastifyInstance) {
           }
         },
         update: {
+          googleAccountResourceName: loc.googleAccountResourceName,
+          googleConnectionId: connection.id,
           displayName: loc.displayName,
           timezone: loc.timezone,
           connectionStatus: 'CONNECTED'

@@ -62,7 +62,11 @@ export class MockGoogleBusinessProfileClient implements IGoogleBusinessProfileCl
     ];
   }
 
-  async fetchReviews(_refreshToken: string, locationResourceName: string): Promise<SyncedReviewDto[]> {
+  async fetchReviews(
+    _refreshToken: string,
+    _locationResourceName: string,
+    _accountResourceName?: string
+  ): Promise<SyncedReviewDto[]> {
     // Generate simulated incoming reviews on sync
     const now = new Date();
     return [

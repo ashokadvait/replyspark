@@ -181,6 +181,28 @@ export function LocationsView() {
                 </p>
               </div>
             )}
+
+            {bannerNotice.message.includes('mybusiness.googleapis.com') && (
+              <div className="mt-3 p-3.5 rounded-xl bg-slate-900/90 border border-amber-500/30 text-xs text-slate-300 space-y-2.5">
+                <p className="font-semibold text-amber-300">
+                  ⚡ Action Required in Google Cloud Console:
+                </p>
+                <p className="text-slate-300 leading-relaxed">
+                  Your Google Business Profile access is approved! Now simply enable the <strong>Google My Business API</strong> in your Google Cloud Project so ReplySpark can fetch customer reviews and post live replies.
+                </p>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <a
+                    href="https://console.developers.google.com/apis/api/mybusiness.googleapis.com/overview?project=14934005381"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition shadow-sm"
+                  >
+                    <span>👉 Enable Google My Business API in Google Cloud</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              </div>
+            )}
           </div>
           <button
             onClick={() => setBannerNotice(null)}
