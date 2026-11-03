@@ -45,8 +45,11 @@ export async function syncRoutes(fastify: FastifyInstance) {
         loc.googleAccountResourceName || undefined
       );
 
+      // Pass 1: Sync all already-replied reviews first so we don't generate drafts for them
+      // and so we can use their given replies as style examples for unreplied reviews.
       for (const rev of fetched) {
-        // Upsert review
+        if (!rev.ownerReplyText) continue;
+
         const existing = await prisma.review.findFirst({
           where: {
             businessLocationId: loc.id,
@@ -56,7 +59,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
 
         if (!existing) {
           totalSynced++;
-          const newReview = await prisma.review.create({
+          await prisma.review.create({
             data: {
               organizationId: auth.organizationId,
               businessLocationId: loc.id,
@@ -66,28 +69,104 @@ export async function syncRoutes(fastify: FastifyInstance) {
               reviewerDisplayName: rev.reviewerDisplayName,
               reviewerPhotoUrl: rev.reviewerPhotoUrl,
               reviewCreatedAt: rev.reviewCreatedAt,
-              workflowStatus: WorkflowStatus.PENDING_APPROVAL
+              googleUpdatedAt: rev.googleUpdatedAt,
+              ownerReplyText: rev.ownerReplyText,
+              ownerReplyCommittedAt: rev.ownerReplyCommittedAt || rev.googleUpdatedAt || rev.reviewCreatedAt,
+              workflowStatus: WorkflowStatus.PUBLISHED
             }
           });
+        } else if (existing.ownerReplyText !== rev.ownerReplyText || existing.workflowStatus !== WorkflowStatus.PUBLISHED) {
+          await prisma.review.update({
+            where: { id: existing.id },
+            data: {
+              ownerReplyText: rev.ownerReplyText,
+              ownerReplyCommittedAt: rev.ownerReplyCommittedAt || rev.googleUpdatedAt || existing.reviewCreatedAt,
+              googleUpdatedAt: rev.googleUpdatedAt,
+              workflowStatus: WorkflowStatus.PUBLISHED
+            }
+          });
+          // Clean up any unnecessary unapproved drafts for reviews that already have a reply on Google
+          await prisma.replyDraft.deleteMany({
+            where: {
+              reviewId: existing.id,
+              approvals: { none: {} }
+            }
+          });
+        }
+      }
 
-          // Generate draft for the review
+      // Gather existing given replies for this location/organization to learn how replies are given
+      const repliedReviews = await prisma.review.findMany({
+        where: {
+          organizationId: auth.organizationId,
+          ownerReplyText: { not: null }
+        },
+        orderBy: { reviewCreatedAt: 'desc' },
+        take: 10
+      });
+
+      const existingReplies = repliedReviews
+        .filter(r => Boolean(r.ownerReplyText))
+        .map(r => ({
+          rating: r.rating,
+          reviewText: r.reviewText,
+          reviewerDisplayName: r.reviewerDisplayName,
+          ownerReplyText: r.ownerReplyText!
+        }));
+
+      // Pass 2: Sync unreplied reviews and generate AI drafts only for those without replies
+      for (const rev of fetched) {
+        if (rev.ownerReplyText) continue;
+
+        const existing = await prisma.review.findFirst({
+          where: {
+            businessLocationId: loc.id,
+            googleReviewResourceName: rev.googleReviewResourceName
+          },
+          include: { replyDrafts: true }
+        });
+
+        let targetReview = existing;
+
+        if (!existing) {
+          totalSynced++;
+          targetReview = await prisma.review.create({
+            data: {
+              organizationId: auth.organizationId,
+              businessLocationId: loc.id,
+              googleReviewResourceName: rev.googleReviewResourceName,
+              rating: rev.rating,
+              reviewText: rev.reviewText,
+              reviewerDisplayName: rev.reviewerDisplayName,
+              reviewerPhotoUrl: rev.reviewerPhotoUrl,
+              reviewCreatedAt: rev.reviewCreatedAt,
+              googleUpdatedAt: rev.googleUpdatedAt,
+              workflowStatus: WorkflowStatus.PENDING_APPROVAL
+            },
+            include: { replyDrafts: true }
+          });
+        }
+
+        // Generate draft only if no reply has been given and no draft exists yet
+        if (targetReview && !targetReview.ownerReplyText && targetReview.replyDrafts.length === 0) {
           const draftResult = await aiProvider.generateReply({
-            rating: newReview.rating,
-            reviewText: newReview.reviewText,
-            reviewerDisplayName: newReview.reviewerDisplayName,
+            rating: targetReview.rating,
+            reviewText: targetReview.reviewText,
+            reviewerDisplayName: targetReview.reviewerDisplayName,
             businessName: loc.organization.name,
             locationName: loc.displayName,
             address: loc.address,
             activePreferences: preferences.map(p => ({
               ruleText: p.ruleText,
               ruleCategory: p.ruleCategory
-            }))
+            })),
+            existingReplies
           });
 
           await prisma.replyDraft.create({
             data: {
               organizationId: auth.organizationId,
-              reviewId: newReview.id,
+              reviewId: targetReview.id,
               generatedText: draftResult.replyText,
               qualityStatus: draftResult.qualityStatus as QualityStatus,
               qualityNotes: draftResult.qualityNotes?.join('; ') || draftResult.rationale,

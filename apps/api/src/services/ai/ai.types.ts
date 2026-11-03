@@ -6,6 +6,13 @@ export interface ActivePreferenceRule {
   scope?: PreferenceScope;
 }
 
+export interface ExistingReplyExample {
+  rating: number;
+  reviewText?: string | null;
+  reviewerDisplayName?: string | null;
+  ownerReplyText: string;
+}
+
 export interface ReplyGenerationContext {
   rating: number;
   reviewText?: string | null;
@@ -14,6 +21,7 @@ export interface ReplyGenerationContext {
   locationName: string;
   address?: string | null;
   activePreferences: ActivePreferenceRule[];
+  existingReplies?: ExistingReplyExample[];
 }
 
 export interface FeedbackContext {

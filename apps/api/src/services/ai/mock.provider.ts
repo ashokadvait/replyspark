@@ -10,70 +10,125 @@ import { FeedbackContext, IAIProvider, ReplyGenerationContext } from './ai.types
 export class MockAIProvider implements IAIProvider {
   async generateReply(context: ReplyGenerationContext): Promise<AIDraftResult> {
     const { rating, reviewText, reviewerDisplayName, businessName, locationName, activePreferences } = context;
-    const nameGreeting = reviewerDisplayName && reviewerDisplayName !== 'Anonymous' ? `${reviewerDisplayName}` : 'there';
-    const textLower = (reviewText || '').toLowerCase();
+    const hasName = reviewerDisplayName && !reviewerDisplayName.toLowerCase().includes('anonymous');
+    const textLower = (reviewText || '').trim().toLowerCase();
+    const isAdvait = businessName.toLowerCase().includes('advait') || locationName.toLowerCase().includes('advait');
+    const brandLabel = isAdvait ? 'Advait Labs' : locationName || businessName;
 
-    // Check for escalation flags (legal, safety, food poisoning, discrimination)
-    const hasLegalOrSafety = textLower.includes('lawyer') ||
+    // Step 6: Check for human review / escalation flags
+    const hasSeriousIssue =
+      textLower.includes('lawyer') ||
       textLower.includes('sue') ||
+      textLower.includes('legal') ||
+      textLower.includes('harass') ||
+      textLower.includes('discriminat') ||
+      textLower.includes('fraud') ||
+      textLower.includes('scam') ||
+      textLower.includes('salary') ||
+      textLower.includes('unpaid') ||
+      textLower.includes('refund') ||
+      textLower.includes('privacy') ||
       textLower.includes('poison') ||
-      textLower.includes('hospital') ||
-      textLower.includes('discrimination');
+      textLower.includes('hospital');
 
-    if (hasLegalOrSafety) {
+    if (hasSeriousIssue) {
       return {
-        replyText: `Hello ${nameGreeting}, we take this matter very seriously. Please contact our leadership directly at support@${businessName.toLowerCase().replace(/\s+/g, '')}.com so we can address your concerns immediately.`,
-        rationale: 'Review contains serious safety, medical, or legal concern. Escalated for direct executive handling.',
+        replyText: `Thank you for bringing this to our attention. We take these concerns seriously and would appreciate the opportunity to review the details directly. Please reach out to our team privately so we can look into this matter.`,
+        rationale: 'Review involves sensitive or serious allegations requiring human verification before publishing.',
         qualityStatus: QualityStatus.ESCALATED,
-        qualityNotes: ['Escalation triggered by safety/legal keyword match.'],
+        qualityNotes: ['Requires human review: sensitive or serious allegation detected.'],
         suggestedEscalation: true,
         modelProvider: 'heuristic-rules-engine',
-        modelName: 'safety-guard-v1',
-        promptVersion: 'v1.0'
+        modelName: 'advait-safety-guard-v2',
+        promptVersion: 'v2.0-advait-optimized'
       };
+    }
+
+    let reviewerCategory = 'GENERAL';
+    if (
+      textLower.includes('work environment') ||
+      textLower.includes('work culture') ||
+      textLower.includes('learning') ||
+      textLower.includes('intern') ||
+      textLower.includes('trainee') ||
+      textLower.includes('colleague') ||
+      textLower.includes('workplace') ||
+      textLower.includes('career')
+    ) {
+      reviewerCategory = 'EMPLOYEE';
+    } else if (
+      textLower.includes('interview') ||
+      textLower.includes('recruitment') ||
+      textLower.includes('hiring') ||
+      textLower.includes('hr ') ||
+      textLower.includes('candidate') ||
+      textLower.includes('onboarding')
+    ) {
+      reviewerCategory = 'APPLICANT';
+    } else if (
+      textLower.includes('partner') ||
+      textLower.includes('vendor') ||
+      textLower.includes('collaborat') ||
+      textLower.includes('inception') ||
+      textLower.includes('vision')
+    ) {
+      reviewerCategory = 'PARTNER';
+    } else if (
+      textLower.includes('project') ||
+      textLower.includes('service') ||
+      textLower.includes('deliver') ||
+      textLower.includes('client') ||
+      textLower.includes('marketing') ||
+      textLower.includes('report') ||
+      textLower.includes('results') ||
+      textLower.includes('smooth')
+    ) {
+      reviewerCategory = 'CLIENT';
     }
 
     let replyText = '';
     let qualityStatus = QualityStatus.PASSED;
-    let rationale = 'Draft generated following brand tone and safety rules.';
-    const qualityNotes: string[] = [];
+    let rationale = `Classified as ${reviewerCategory} (${rating}★). Generated natural response aligned with ${brandLabel} voice and past replies.`;
+    const qualityNotes: string[] = [`Category: ${reviewerCategory}`];
 
-    if (rating >= 4) {
-      // Positive reviews
-      if (textLower.includes('food') || textLower.includes('delicious') || textLower.includes('risotto') || textLower.includes('dish')) {
-        replyText = `Thank you so much for the wonderful review, ${nameGreeting}! We are thrilled that you enjoyed our culinary offerings at ${locationName}. Our kitchen team takes immense pride in crafting memorable dishes, and we can't wait to welcome you back again soon!`;
-      } else if (textLower.includes('view') || textLower.includes('atmosphere') || textLower.includes('music') || textLower.includes('sunset')) {
-        replyText = `Thank you for the fantastic feedback, ${nameGreeting}! We are delighted that you had a great time soaking in the ambiance at ${locationName}. We appreciate your support and look forward to hosting you for your next visit!`;
+    if (!textLower) {
+      // Rating-only reviews
+      if (rating === 5) {
+        replyText = hasName
+          ? `Thank you for the five-star rating, ${reviewerDisplayName}! We appreciate your support.`
+          : `Thank you for the five-star rating! We appreciate your support.`;
+      } else if (rating === 4) {
+        replyText = `Thank you for the four-star rating! We appreciate your support and always welcome any feedback.`;
+      } else if (rating === 3) {
+        replyText = `Thank you for your rating. We appreciate your feedback and would welcome any thoughts on how our team can improve your experience.`;
       } else {
-        replyText = `Thank you for sharing your experience with us, ${nameGreeting}! We are so glad our team at ${locationName} delivered a great visit. We hope to see you again soon!`;
+        qualityStatus = QualityStatus.FLAGGED_WARNING;
+        replyText = `Thank you for your feedback. We're sorry to see that your experience may not have met your expectations. We'd appreciate the opportunity to understand your concerns.`;
+      }
+    } else if (rating >= 4) {
+      if (reviewerCategory === 'EMPLOYEE') {
+        replyText = `Thank you for sharing your experience! It's great to hear that you've enjoyed the positive work environment and collaborative culture at ${brandLabel}. We truly appreciate the contributions of everyone on our team.`;
+      } else if (reviewerCategory === 'APPLICANT') {
+        replyText = `Thank you for taking the time to share your interview experience. We're pleased to hear that the process was smooth and well organised, and we appreciate your interest in ${brandLabel}.`;
+      } else if (reviewerCategory === 'PARTNER') {
+        replyText = `Thank you for your kind words and continued support! We truly appreciate your recognition of our team's vision and commitment to excellence at ${brandLabel}.`;
+      } else if (reviewerCategory === 'CLIENT') {
+        replyText = `Thank you for sharing your experience! We're glad our team could support you with smooth delivery and reliable service. We appreciate your trust in ${brandLabel} and look forward to working together again.`;
+      } else {
+        replyText = `Thank you for your kind words and positive feedback! Our team at ${brandLabel} truly appreciates your support.`;
       }
     } else if (rating === 3) {
-      // Neutral reviews
-      if (!reviewText) {
-        replyText = `Thank you for rating ${locationName}, ${nameGreeting}. We are always working to improve our guest experience and would love to hear what could have made your visit 5 stars. Please feel free to share your thoughts with us at feedback@${businessName.toLowerCase().replace(/\s+/g, '')}.com!`;
-        rationale = 'No review text provided. Invited guest to share feedback constructively.';
-      } else {
-        replyText = `Thank you for taking the time to share your balanced feedback, ${nameGreeting}. We appreciate you pointing out what we did well as well as where we can improve. Your insights help us elevate our service at ${locationName}.`;
-      }
+      replyText = `Thank you for sharing your feedback. We appreciate your perspective and are always looking for ways our team at ${brandLabel} can improve. Please feel free to reach out directly if you'd like to share more details.`;
     } else {
-      // Negative reviews (1 or 2 stars)
       qualityStatus = QualityStatus.FLAGGED_WARNING;
-      rationale = 'Complaint review. Acknowledged issue respectfully without making unauthorized public refund promises.';
-      qualityNotes.push('Checked against policy: no public monetary compensation promised.');
-
-      if (textLower.includes('wait') || textLower.includes('delay') || textLower.includes('slow')) {
-        replyText = `Hello ${nameGreeting}, thank you for your candid feedback. We deeply apologize for the extended wait time and service delays you experienced at ${locationName}. This is not indicative of our typical standards, and our management team would appreciate the opportunity to speak with you directly at manager@${businessName.toLowerCase().replace(/\s+/g, '')}.com.`;
-      } else if (textLower.includes('cold') || textLower.includes('food') || textLower.includes('taste')) {
-        replyText = `Hello ${nameGreeting}, we are genuinely sorry to hear that the quality and temperature of your meal fell short during your visit to ${locationName}. We hold our culinary team to high standards, and we would welcome the chance to learn more and make things right if you could reach out to us at support@${businessName.toLowerCase().replace(/\s+/g, '')}.com.`;
-      } else {
-        replyText = `Hello ${nameGreeting}, thank you for bringing this to our attention. We are truly sorry that your experience at ${locationName} did not meet expectations. Please reach out to our team at support@${businessName.toLowerCase().replace(/\s+/g, '')}.com so we can investigate and address your concerns directly.`;
-      }
+      rationale = `Negative ${reviewerCategory} review (${rating}★). Acknowledged respectfully without defensiveness or unsupported promises.`;
+      qualityNotes.push('Checked against policy: no public compensation promised; invited private communication.');
+      replyText = `Thank you for sharing your feedback. We're sorry to hear that your experience did not meet expectations. We'd appreciate the opportunity to understand your concerns better—please reach out to our team directly so we can look into this.`;
     }
 
-    // Check conciseness preference if active
     const concisenessPref = activePreferences.find(p => p.ruleCategory === 'CONCISENESS');
     if (concisenessPref) {
-      qualityNotes.push('Applied active rule: concise 2-3 sentence structure.');
+      qualityNotes.push('Applied active rule: concise 25-60 word structure.');
     }
 
     return {
@@ -83,8 +138,8 @@ export class MockAIProvider implements IAIProvider {
       qualityNotes,
       suggestedEscalation: false,
       modelProvider: 'heuristic-ai',
-      modelName: 'replyspark-draft-v1',
-      promptVersion: 'v1.0'
+      modelName: 'replyspark-advait-v2',
+      promptVersion: 'v2.0-advait-optimized'
     };
   }
 

@@ -231,8 +231,8 @@ export function ReviewCard({
             </div>
           </div>
 
-          {/* Published owner reply display */}
-          {review.ownerReplyText && (
+          {/* Published owner reply display (shown on left only when a draft is also shown on the right) */}
+          {review.ownerReplyText && review.latestDraft && (
             <div className="p-3 bg-emerald-950/20 border border-emerald-500/20 rounded-xl text-left">
               <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-400 mb-1">
                 <span>Published Google Reply</span>
@@ -249,7 +249,31 @@ export function ReviewCard({
 
         {/* Right Column: AI Proposed Reply & Actions */}
         <div className="space-y-3 flex flex-col justify-between">
-          {review.latestDraft ? (
+          {review.ownerReplyText && !review.latestDraft ? (
+            <div className="flex flex-col justify-between h-full min-h-[140px] rounded-xl border border-emerald-500/25 bg-emerald-950/15 p-4 text-left">
+              <div>
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                    <CheckCircle className="w-3.5 h-3.5" /> Reply Already Given on Google
+                  </span>
+                  {review.ownerReplyCommittedAt && (
+                    <span className="text-[11px] text-slate-400">
+                      Replied {new Date(review.ownerReplyCommittedAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+                <div className="bg-[#0b0f19]/90 border border-emerald-500/20 rounded-xl p-3 text-xs text-slate-200 leading-relaxed">
+                  &ldquo;{review.ownerReplyText}&rdquo;
+                </div>
+              </div>
+              <div className="pt-2.5 flex items-center justify-between text-[11px] text-slate-400">
+                <span className="flex items-center gap-1 text-emerald-400/80">
+                  <ShieldCheck className="w-3.5 h-3.5" /> Used as style reference for future AI replies
+                </span>
+                <span>No draft needed</span>
+              </div>
+            </div>
+          ) : review.latestDraft ? (
             <>
               <div>
                 <div className="flex items-center justify-between mb-2">

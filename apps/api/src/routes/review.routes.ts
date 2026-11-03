@@ -86,7 +86,7 @@ export async function reviewRoutes(fastify: FastifyInstance) {
         id: r.id,
         rating: r.rating,
         reviewText: r.reviewText,
-        reviewerDisplayName: r.reviewerDisplayName || 'Anonymous Diner',
+        reviewerDisplayName: r.reviewerDisplayName || 'Anonymous Reviewer',
         reviewerPhotoUrl: r.reviewerPhotoUrl,
         reviewCreatedAt: r.reviewCreatedAt,
         workflowStatus: r.workflowStatus,
@@ -158,17 +158,43 @@ export async function reviewRoutes(fastify: FastifyInstance) {
       return reply.code(404).send({ error: 'Not Found', message: 'Review not found' });
     }
 
-    // Fetch active AI preferences for this organization and location
-    const preferences = await prisma.aiPreference.findMany({
-      where: {
-        organizationId: auth.organizationId,
-        status: 'ACTIVE',
-        OR: [
-          { businessLocationId: null },
-          { businessLocationId: review.businessLocationId }
-        ]
-      }
-    });
+    if (review.ownerReplyText && review.workflowStatus === WorkflowStatus.PUBLISHED) {
+      return reply.code(400).send({
+        error: 'Already Replied',
+        message: 'A reply has already been published for this review on Google.'
+      });
+    }
+
+    // Fetch active AI preferences and existing given replies for style learning
+    const [preferences, repliedReviews] = await Promise.all([
+      prisma.aiPreference.findMany({
+        where: {
+          organizationId: auth.organizationId,
+          status: 'ACTIVE',
+          OR: [
+            { businessLocationId: null },
+            { businessLocationId: review.businessLocationId }
+          ]
+        }
+      }),
+      prisma.review.findMany({
+        where: {
+          organizationId: auth.organizationId,
+          ownerReplyText: { not: null }
+        },
+        orderBy: { reviewCreatedAt: 'desc' },
+        take: 10
+      })
+    ]);
+
+    const existingReplies = repliedReviews
+      .filter(r => Boolean(r.ownerReplyText))
+      .map(r => ({
+        rating: r.rating,
+        reviewText: r.reviewText,
+        reviewerDisplayName: r.reviewerDisplayName,
+        ownerReplyText: r.ownerReplyText!
+      }));
 
     const aiProvider = getAIProvider();
     const result = await aiProvider.generateReply({
@@ -181,7 +207,8 @@ export async function reviewRoutes(fastify: FastifyInstance) {
       activePreferences: preferences.map(p => ({
         ruleText: p.ruleText,
         ruleCategory: p.ruleCategory
-      }))
+      })),
+      existingReplies
     });
 
     // Save draft and transition review to PENDING_APPROVAL
@@ -241,16 +268,35 @@ export async function reviewRoutes(fastify: FastifyInstance) {
       return reply.code(404).send({ error: 'Not Found', message: 'Review not found' });
     }
 
-    const preferences = await prisma.aiPreference.findMany({
-      where: {
-        organizationId: auth.organizationId,
-        status: 'ACTIVE',
-        OR: [
-          { businessLocationId: null },
-          { businessLocationId: review.businessLocationId }
-        ]
-      }
-    });
+    const [preferences, repliedReviews] = await Promise.all([
+      prisma.aiPreference.findMany({
+        where: {
+          organizationId: auth.organizationId,
+          status: 'ACTIVE',
+          OR: [
+            { businessLocationId: null },
+            { businessLocationId: review.businessLocationId }
+          ]
+        }
+      }),
+      prisma.review.findMany({
+        where: {
+          organizationId: auth.organizationId,
+          ownerReplyText: { not: null }
+        },
+        orderBy: { reviewCreatedAt: 'desc' },
+        take: 10
+      })
+    ]);
+
+    const existingReplies = repliedReviews
+      .filter(r => Boolean(r.ownerReplyText))
+      .map(r => ({
+        rating: r.rating,
+        reviewText: r.reviewText,
+        reviewerDisplayName: r.reviewerDisplayName,
+        ownerReplyText: r.ownerReplyText!
+      }));
 
     const aiProvider = getAIProvider();
     const result = await aiProvider.generateReply({
@@ -263,7 +309,8 @@ export async function reviewRoutes(fastify: FastifyInstance) {
       activePreferences: preferences.map(p => ({
         ruleText: p.ruleText,
         ruleCategory: p.ruleCategory
-      }))
+      })),
+      existingReplies
     });
 
     const draft = await prisma.replyDraft.create({

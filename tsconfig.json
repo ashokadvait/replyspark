@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@replyspark/db": ["./packages/db/src/index.ts"],
+      "@replyspark/shared": ["./packages/shared/src/index.ts"],
+      "@prisma/client": ["./packages/db/node_modules/@prisma/client"]
+    },
+    "typeRoots": [
+      "./apps/api/node_modules/@types",
+      "./packages/db/node_modules/@types",
+      "./node_modules/@types"
+    ]
+  },
+  "include": [
+    "apps/api/src/**/*",
+    "apps/worker/src/**/*",
+    "packages/db/src/**/*",
+    "packages/shared/src/**/*",
+    "scratch/**/*"
+  ],
+  "exclude": ["node_modules", "**/dist", "**/node_modules", "apps/web"]
+}
+
