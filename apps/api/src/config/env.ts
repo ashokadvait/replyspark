@@ -15,7 +15,7 @@ export const ENV = {
   HOST: process.env.HOST || '0.0.0.0',
   API_URL: process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || '',
   WEB_URL: process.env.WEB_URL || '',
-  DATABASE_URL: process.env.DATABASE_URL || '',
+  DATABASE_URL: process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.PRISMA_DATABASE_URL || '',
   REDIS_URL: process.env.REDIS_URL || '',
   JWT_SECRET: process.env.JWT_SECRET || '',
   AI_PROVIDER: process.env.AI_PROVIDER || 'gemini',
