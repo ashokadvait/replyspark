@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "main": "./dist/app.js",
+  "types": "./dist/app.d.ts",
   "scripts": {
     "dev": "NODE_OPTIONS='--no-network-family-autoselection --dns-result-order=ipv4first' tsx watch src/index.ts",
     "build": "tsc",

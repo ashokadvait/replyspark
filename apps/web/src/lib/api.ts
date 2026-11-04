@@ -1,4 +1,12 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+function getApiUrl(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
+  }
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  return '';
+}
 
 export class ApiClient {
   public static getToken(): string | null {
@@ -40,7 +48,7 @@ export class ApiClient {
       headers['x-organization-id'] = orgId;
     }
 
-    const res = await fetch(`${API_URL}${endpoint}`, {
+    const res = await fetch(`${getApiUrl()}${endpoint}`, {
       ...options,
       headers
     });

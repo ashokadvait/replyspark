@@ -69,6 +69,12 @@ importers:
 
   apps/web:
     dependencies:
+      '@replyspark/api':
+        specifier: workspace:*
+        version: link:../api
+      '@replyspark/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@replyspark/shared':
         specifier: workspace:*
         version: link:../../packages/shared
