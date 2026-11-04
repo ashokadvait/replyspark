@@ -3,7 +3,7 @@ node_modules/
 .pnp/
 .pnp.js
 
-# Build outputs
+# Build outputssss
 dist/
 build/
 .next/
