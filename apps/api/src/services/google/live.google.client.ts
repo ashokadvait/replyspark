@@ -130,31 +130,54 @@ export class LiveGoogleBusinessProfileClient implements IGoogleBusinessProfileCl
 
     // In Google My Business API v4, reviews endpoint requires:
     // https://mybusiness.googleapis.com/v4/accounts/{accountId}/locations/{locationId}/reviews
-    let url: string;
+    let baseUrl: string;
     if (locationResourceName.startsWith('accounts/')) {
-      url = `${this.baseReviewsUrl}/${locationResourceName}/reviews`;
+      baseUrl = `${this.baseReviewsUrl}/${locationResourceName}/reviews`;
     } else if (accountResourceName) {
-      url = `${this.baseReviewsUrl}/${accountResourceName}/${locationResourceName}/reviews`;
+      baseUrl = `${this.baseReviewsUrl}/${accountResourceName}/${locationResourceName}/reviews`;
     } else {
       // Auto-discover the account if not provided
       const accounts = await this.getAccounts(refreshToken);
       const acc = accounts[0]?.name;
-      url = acc
+      baseUrl = acc
         ? `${this.baseReviewsUrl}/${acc}/${locationResourceName}/reviews`
         : `${this.baseReviewsUrl}/${locationResourceName}/reviews`;
     }
 
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
+    const allRawReviews: any[] = [];
+    let nextPageToken: string | undefined = undefined;
+    let pageCount = 0;
+    const maxPages = 200; // Safeguard up to 10,000 reviews (50 per page * 200)
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Google GBP Reviews error: ${this.parseGoogleError(res.status, errText)}`);
-    }
+    do {
+      pageCount++;
+      const url = new URL(baseUrl);
+      url.searchParams.set('pageSize', '50');
+      if (nextPageToken) {
+        url.searchParams.set('pageToken', nextPageToken);
+      }
 
-    const data = await res.json();
-    return (data.reviews || []).map((rev: any) => ({
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Google GBP Reviews error: ${this.parseGoogleError(res.status, errText)}`);
+      }
+
+      const data = await res.json();
+      if (Array.isArray(data.reviews)) {
+        allRawReviews.push(...data.reviews);
+      }
+
+      nextPageToken =
+        data.nextPageToken && typeof data.nextPageToken === 'string' && data.nextPageToken.trim() !== ''
+          ? data.nextPageToken.trim()
+          : undefined;
+    } while (nextPageToken && pageCount < maxPages);
+
+    return allRawReviews.map((rev: any) => ({
       googleReviewResourceName: rev.name,
       rating: this.mapGoogleRating(rev.starRating),
       reviewText: rev.comment,

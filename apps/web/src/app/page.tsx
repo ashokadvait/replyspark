@@ -11,7 +11,7 @@ import { AuditView } from '@/components/AuditView';
 import { AuthModal } from '@/components/AuthModal';
 import { LandingPage } from '@/components/LandingPage';
 import { ApiClient } from '@/lib/api';
-import { Search, Filter, Sparkles, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Search, Filter, Sparkles, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Wand2 } from 'lucide-react';
 
 export default function HomePage() {
   const [currentTab, setCurrentTab] = useState('inbox');
@@ -29,7 +29,23 @@ export default function HomePage() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [pagination, setPagination] = useState<{
+    page: number;
+    limit: number;
+    totalCount: number;
+    totalPages: number;
+  }>({
+    page: 1,
+    limit: 20,
+    totalCount: 0,
+    totalPages: 1
+  });
 
   // Feedback Modal State
   const [feedbackModal, setFeedbackModal] = useState<{
@@ -117,7 +133,9 @@ export default function HomePage() {
           status: statusFilter,
           locationId: selectedLocationId,
           rating: ratingFilter,
-          search: searchQuery
+          search: searchQuery,
+          page: currentPage,
+          limit: pageSize
         }),
         ApiClient.getLocations(),
         ApiClient.getGoogleStatus()
@@ -127,12 +145,15 @@ export default function HomePage() {
       setMetrics(reviewRes.metrics || {});
       setLocations(locRes.locations || []);
       setGoogleStatus(statusRes);
+      if (reviewRes.pagination) {
+        setPagination(reviewRes.pagination);
+      }
     } catch (err) {
       console.error('Error fetching data', err);
     } finally {
       setIsLoading(false);
     }
-  }, [statusFilter, selectedLocationId, ratingFilter, searchQuery]);
+  }, [statusFilter, selectedLocationId, ratingFilter, searchQuery, currentPage, pageSize]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -177,11 +198,28 @@ export default function HomePage() {
     try {
       const res = await ApiClient.syncReviews(selectedLocationId !== 'ALL' ? selectedLocationId : undefined);
       showToast(res.message || 'Synced reviews successfully!');
+      setCurrentPage(1);
       await loadData();
     } catch (err: any) {
       showToast(`Sync failed: ${err.message}`);
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  // Generate Drafts for all Unreplied Reviews
+  const handleGenerateAllUnreplied = async () => {
+    setIsGeneratingAll(true);
+    try {
+      const res = await ApiClient.generateAllUnreplied(
+        selectedLocationId !== 'ALL' ? selectedLocationId : undefined
+      );
+      showToast(res.message || `Generated drafts for ${res.generatedCount} unreplied review(s).`);
+      await loadData();
+    } catch (err: any) {
+      showToast(`Draft generation failed: ${err.message}`);
+    } finally {
+      setIsGeneratingAll(false);
     }
   };
 
@@ -298,7 +336,10 @@ export default function HomePage() {
       <Header
         locations={locations}
         selectedLocationId={selectedLocationId}
-        onSelectLocation={setSelectedLocationId}
+        onSelectLocation={(locId) => {
+          setSelectedLocationId(locId);
+          setCurrentPage(1);
+        }}
         onSync={handleSync}
         isSyncing={isSyncing}
         googleStatus={googleStatus}
@@ -337,16 +378,31 @@ export default function HomePage() {
                   </p>
                 </div>
 
-                {/* Search Bar */}
-                <div className="relative w-full lg:w-72">
-                  <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search reviews or reviewer..."
-                    className="w-full bg-slate-900/90 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
-                  />
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full lg:w-auto">
+                  <button
+                    onClick={handleGenerateAllUnreplied}
+                    disabled={isGeneratingAll || isSyncing}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition cursor-pointer disabled:opacity-50 shadow-sm"
+                    title="Generate AI reply drafts for any reviews that do not have replies yet"
+                  >
+                    <Wand2 className={`w-3.5 h-3.5 text-indigo-400 ${isGeneratingAll ? 'animate-spin' : ''}`} />
+                    <span>{isGeneratingAll ? 'Generating Drafts...' : 'Draft Unreplied'}</span>
+                  </button>
+
+                  {/* Search Bar */}
+                  <div className="relative w-full lg:w-72">
+                    <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      placeholder="Search reviews or reviewer..."
+                      className="w-full bg-slate-900/90 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -355,7 +411,10 @@ export default function HomePage() {
                 {filterTabs.map((tab) => (
                   <button
                     key={tab.id}
-                    onClick={() => setStatusFilter(tab.id)}
+                    onClick={() => {
+                      setStatusFilter(tab.id);
+                      setCurrentPage(1);
+                    }}
                     className={`px-3.5 py-1.5 rounded-xl text-xs font-medium transition flex items-center gap-2 cursor-pointer ${
                       statusFilter === tab.id
                         ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
@@ -382,7 +441,10 @@ export default function HomePage() {
                   <span className="text-[11px] text-slate-500">Rating:</span>
                   <select
                     value={ratingFilter ?? ''}
-                    onChange={(e) => setRatingFilter(e.target.value ? Number(e.target.value) : undefined)}
+                    onChange={(e) => {
+                      setRatingFilter(e.target.value ? Number(e.target.value) : undefined);
+                      setCurrentPage(1);
+                    }}
                     className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-slate-300 focus:outline-none cursor-pointer"
                   >
                     <option value="">All Ratings</option>
@@ -400,23 +462,73 @@ export default function HomePage() {
                 <div className="py-20 text-center text-xs text-slate-400">Loading inbox reviews...</div>
               ) : reviews.length > 0 ? (
                 <div className="space-y-4">
-                  {reviews.map((rev) => (
-                    <ReviewCard
-                      key={rev.id}
-                      review={rev}
-                      onApprove={handleApprove}
-                      onRegenerate={handleRegenerate}
-                      onReject={handleReject}
-                      onGenerateInitial={handleGenerateInitial}
-                      onOpenFeedback={(draftId, currentText) =>
-                        setFeedbackModal({
-                          isOpen: true,
-                          draftId,
-                          originalText: currentText
-                        })
-                      }
-                    />
-                  ))}
+                  <div className="space-y-4">
+                    {reviews.map((rev) => (
+                      <ReviewCard
+                        key={rev.id}
+                        review={rev}
+                        onApprove={handleApprove}
+                        onRegenerate={handleRegenerate}
+                        onReject={handleReject}
+                        onGenerateInitial={handleGenerateInitial}
+                        onOpenFeedback={(draftId, currentText) =>
+                          setFeedbackModal({
+                            isOpen: true,
+                            draftId,
+                            originalText: currentText
+                          })
+                        }
+                      />
+                    ))}
+                  </div>
+
+                  {/* Pagination Controls */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-800 text-xs text-slate-400">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span>
+                        Showing <strong className="text-slate-200">{pagination.totalCount === 0 ? 0 : (pagination.page - 1) * pagination.limit + 1}</strong> to{' '}
+                        <strong className="text-slate-200">{Math.min(pagination.page * pagination.limit, pagination.totalCount)}</strong> of{' '}
+                        <strong className="text-slate-200">{pagination.totalCount}</strong> reviews
+                      </span>
+                      <div className="flex items-center gap-1.5 ml-2">
+                        <span className="text-[11px] text-slate-500">Per page:</span>
+                        <select
+                          value={pageSize}
+                          onChange={(e) => {
+                            setPageSize(Number(e.target.value));
+                            setCurrentPage(1);
+                          }}
+                          className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-300 focus:outline-none cursor-pointer"
+                        >
+                          <option value="10">10</option>
+                          <option value="20">20</option>
+                          <option value="50">50</option>
+                          <option value="100">100</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={pagination.page <= 1}
+                        className="px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1 cursor-pointer"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" /> Previous
+                      </button>
+                      <span className="px-3 py-1 text-slate-400">
+                        Page <span className="font-semibold text-slate-200">{pagination.page}</span> of{' '}
+                        <span className="font-semibold text-slate-200">{pagination.totalPages || 1}</span>
+                      </span>
+                      <button
+                        onClick={() => setCurrentPage((p) => Math.min(pagination.totalPages || 1, p + 1))}
+                        disabled={pagination.page >= (pagination.totalPages || 1)}
+                        className="px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1 cursor-pointer"
+                      >
+                        Next <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="py-20 text-center rounded-2xl border border-dashed border-slate-800 bg-slate-900/20 p-8">

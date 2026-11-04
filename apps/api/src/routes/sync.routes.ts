@@ -149,10 +149,62 @@ export async function syncRoutes(fastify: FastifyInstance) {
 
         // Generate draft only if no reply has been given and no draft exists yet
         if (targetReview && !targetReview.ownerReplyText && targetReview.replyDrafts.length === 0) {
+          try {
+            const draftResult = await aiProvider.generateReply({
+              rating: targetReview.rating,
+              reviewText: targetReview.reviewText,
+              reviewerDisplayName: targetReview.reviewerDisplayName,
+              businessName: loc.organization.name,
+              locationName: loc.displayName,
+              address: loc.address,
+              activePreferences: preferences.map(p => ({
+                ruleText: p.ruleText,
+                ruleCategory: p.ruleCategory
+              })),
+              existingReplies
+            });
+
+            await prisma.replyDraft.create({
+              data: {
+                organizationId: auth.organizationId,
+                reviewId: targetReview.id,
+                generatedText: draftResult.replyText,
+                qualityStatus: draftResult.qualityStatus as QualityStatus,
+                qualityNotes: draftResult.qualityNotes?.join('; ') || draftResult.rationale,
+                suggestedEscalation: draftResult.suggestedEscalation,
+                modelProvider: draftResult.modelProvider,
+                modelName: draftResult.modelName,
+                promptVersion: draftResult.promptVersion
+              }
+            });
+
+            await prisma.review.update({
+              where: { id: targetReview.id },
+              data: { workflowStatus: WorkflowStatus.PENDING_APPROVAL }
+            });
+
+            newDraftsGenerated++;
+          } catch (err: any) {
+            fastify.log.warn(`[Sync] Failed to generate AI draft for review ${targetReview.id}: ${err?.message || err}`);
+          }
+        }
+      }
+
+      // Also ensure any unreplied reviews in DB for this location without drafts get drafts generated
+      const remainingUnreplied = await prisma.review.findMany({
+        where: {
+          businessLocationId: loc.id,
+          ownerReplyText: null,
+          replyDrafts: { none: {} }
+        }
+      });
+
+      for (const unrepliedReview of remainingUnreplied) {
+        try {
           const draftResult = await aiProvider.generateReply({
-            rating: targetReview.rating,
-            reviewText: targetReview.reviewText,
-            reviewerDisplayName: targetReview.reviewerDisplayName,
+            rating: unrepliedReview.rating,
+            reviewText: unrepliedReview.reviewText,
+            reviewerDisplayName: unrepliedReview.reviewerDisplayName,
             businessName: loc.organization.name,
             locationName: loc.displayName,
             address: loc.address,
@@ -166,7 +218,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
           await prisma.replyDraft.create({
             data: {
               organizationId: auth.organizationId,
-              reviewId: targetReview.id,
+              reviewId: unrepliedReview.id,
               generatedText: draftResult.replyText,
               qualityStatus: draftResult.qualityStatus as QualityStatus,
               qualityNotes: draftResult.qualityNotes?.join('; ') || draftResult.rationale,
@@ -177,7 +229,14 @@ export async function syncRoutes(fastify: FastifyInstance) {
             }
           });
 
+          await prisma.review.update({
+            where: { id: unrepliedReview.id },
+            data: { workflowStatus: WorkflowStatus.PENDING_APPROVAL }
+          });
+
           newDraftsGenerated++;
+        } catch (err: any) {
+          fastify.log.warn(`[Sync] Failed to generate AI draft for unreplied review ${unrepliedReview.id}: ${err?.message || err}`);
         }
       }
 

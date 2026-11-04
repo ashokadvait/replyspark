@@ -104,6 +104,7 @@ export class ApiClient {
     rating?: number;
     search?: string;
     page?: number;
+    limit?: number;
   } = {}) {
     const query = new URLSearchParams();
     if (params.status && params.status !== 'ALL') query.set('status', params.status);
@@ -111,8 +112,21 @@ export class ApiClient {
     if (params.rating) query.set('rating', params.rating.toString());
     if (params.search) query.set('search', params.search);
     if (params.page) query.set('page', params.page.toString());
+    if (params.limit) query.set('limit', params.limit.toString());
 
     return this.request(`/api/v1/reviews?${query.toString()}`);
+  }
+
+  public static async generateAllUnreplied(locationId?: string) {
+    return this.request<{
+      success: boolean;
+      generatedCount: number;
+      totalUnreplied: number;
+      message: string;
+    }>('/api/v1/reviews/generate-unreplied', {
+      method: 'POST',
+      body: JSON.stringify({ locationId })
+    });
   }
 
   public static async generateDraft(reviewId: string) {

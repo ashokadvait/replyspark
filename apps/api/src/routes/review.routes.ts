@@ -412,4 +412,114 @@ export async function reviewRoutes(fastify: FastifyInstance) {
       candidatePreference
     });
   });
+
+  // Generate drafts for all unreplied reviews that don't have drafts yet
+  fastify.post('/generate-unreplied', async (request, reply) => {
+    const auth = request.auth!;
+    const { locationId } = (request.body || {}) as { locationId?: string };
+
+    const whereClause: any = {
+      organizationId: auth.organizationId,
+      ownerReplyText: null,
+      replyDrafts: { none: {} }
+    };
+
+    if (locationId && locationId !== 'ALL') {
+      whereClause.businessLocationId = locationId;
+    }
+
+    const unrepliedReviews = await prisma.review.findMany({
+      where: whereClause,
+      include: {
+        businessLocation: true,
+        organization: true
+      }
+    });
+
+    if (unrepliedReviews.length === 0) {
+      return reply.send({
+        success: true,
+        generatedCount: 0,
+        message: 'No unreplied reviews found that need draft replies.'
+      });
+    }
+
+    const [preferences, repliedReviews] = await Promise.all([
+      prisma.aiPreference.findMany({
+        where: {
+          organizationId: auth.organizationId,
+          status: 'ACTIVE'
+        }
+      }),
+      prisma.review.findMany({
+        where: {
+          organizationId: auth.organizationId,
+          ownerReplyText: { not: null }
+        },
+        orderBy: { reviewCreatedAt: 'desc' },
+        take: 10
+      })
+    ]);
+
+    const existingReplies = repliedReviews
+      .filter((r) => Boolean(r.ownerReplyText))
+      .map((r) => ({
+        rating: r.rating,
+        reviewText: r.reviewText,
+        reviewerDisplayName: r.reviewerDisplayName,
+        ownerReplyText: r.ownerReplyText!
+      }));
+
+    const aiProvider = getAIProvider();
+    let generatedCount = 0;
+
+    for (const rev of unrepliedReviews) {
+      try {
+        const result = await aiProvider.generateReply({
+          rating: rev.rating,
+          reviewText: rev.reviewText,
+          reviewerDisplayName: rev.reviewerDisplayName,
+          businessName: rev.organization.name,
+          locationName: rev.businessLocation.displayName,
+          address: rev.businessLocation.address,
+          activePreferences: preferences
+            .filter((p) => !p.businessLocationId || p.businessLocationId === rev.businessLocationId)
+            .map((p) => ({ ruleText: p.ruleText, ruleCategory: p.ruleCategory })),
+          existingReplies
+        });
+
+        await prisma.$transaction([
+          prisma.replyDraft.create({
+            data: {
+              organizationId: auth.organizationId,
+              reviewId: rev.id,
+              generatedText: result.replyText,
+              qualityStatus: result.qualityStatus as QualityStatus,
+              qualityNotes: result.qualityNotes?.join('; ') || result.rationale,
+              suggestedEscalation: result.suggestedEscalation,
+              modelProvider: result.modelProvider,
+              modelName: result.modelName,
+              promptVersion: result.promptVersion,
+              createdBy: auth.userId
+            }
+          }),
+          prisma.review.update({
+            where: { id: rev.id },
+            data: { workflowStatus: WorkflowStatus.PENDING_APPROVAL }
+          })
+        ]);
+
+        generatedCount++;
+      } catch (err: any) {
+        fastify.log.warn(`[GenerateUnreplied] Failed for review ${rev.id}: ${err?.message || err}`);
+      }
+    }
+
+    return reply.send({
+      success: true,
+      generatedCount,
+      totalUnreplied: unrepliedReviews.length,
+      message: `Generated drafts for ${generatedCount} unreplied review(s).`
+    });
+  });
 }
