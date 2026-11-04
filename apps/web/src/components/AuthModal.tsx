@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { Sparkles, Mail, Lock, User, Building, AlertCircle, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { ApiClient } from '../lib/api';
 
@@ -280,6 +281,17 @@ export function AuthModal({ isOpen, onSuccess, onClose, canClose = false }: Auth
             </button>
           </div>
         )}
+
+        {/* Privacy Policy & Terms Links (Required by Google OAuth Home Page policy) */}
+        <div className="pt-2 border-t border-slate-800/70 flex items-center justify-center gap-4 text-[11px] text-slate-400">
+          <Link href="/privacy" className="hover:text-emerald-400 transition underline underline-offset-2">
+            Privacy Policy
+          </Link>
+          <span>•</span>
+          <Link href="/terms" className="hover:text-emerald-400 transition underline underline-offset-2">
+            Terms of Service
+          </Link>
+        </div>
       </div>
     </div>
   );

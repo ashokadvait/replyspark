@@ -9,6 +9,7 @@ import { PreferencesView } from '@/components/PreferencesView';
 import { LocationsView } from '@/components/LocationsView';
 import { AuditView } from '@/components/AuditView';
 import { AuthModal } from '@/components/AuthModal';
+import { LandingPage } from '@/components/LandingPage';
 import { ApiClient } from '@/lib/api';
 import { Search, Filter, Sparkles, AlertCircle, CheckCircle2 } from 'lucide-react';
 
@@ -24,6 +25,7 @@ export default function HomePage() {
   const [googleStatus, setGoogleStatus] = useState<any>(null);
   const [userName, setUserName] = useState('Ashok Advait');
   const [userEmail, setUserEmail] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -64,7 +66,7 @@ export default function HomePage() {
     try {
       const token = ApiClient.getToken();
       if (!token) {
-        setIsAuthModalOpen(true);
+        setIsAuthenticated(false);
         setIsLoading(false);
         return false;
       }
@@ -73,10 +75,11 @@ export default function HomePage() {
         setUserName(me.user.displayName);
         setUserEmail(me.user.email);
       }
+      setIsAuthenticated(true);
       return true;
     } catch (e) {
       ApiClient.logout();
-      setIsAuthModalOpen(true);
+      setIsAuthenticated(false);
       setIsLoading(false);
       return false;
     }
@@ -84,16 +87,18 @@ export default function HomePage() {
 
   const handleSignOut = () => {
     ApiClient.logout();
+    setIsAuthenticated(false);
     setReviews([]);
     setLocations([]);
     setGoogleStatus(null);
     setUserEmail('');
     setUserName('Guest');
-    setIsAuthModalOpen(true);
+    setIsAuthModalOpen(false);
     showToast('Signed out successfully');
   };
 
   const handleAuthSuccess = async (userData: any) => {
+    setIsAuthenticated(true);
     setIsAuthModalOpen(false);
     setIsLoading(true);
     if (userData.user?.displayName) {
@@ -258,6 +263,26 @@ export default function HomePage() {
     { id: 'PUBLISHED', label: 'Published', count: metrics.PUBLISHED || 0 },
     { id: 'REJECTED', label: 'Rejected', count: metrics.REJECTED || 0 },
   ];
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        {toastMessage && (
+          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white shadow-2xl animate-fade-in">
+            <Sparkles className="w-4 h-4 text-emerald-400" />
+            <span>{toastMessage}</span>
+          </div>
+        )}
+        <LandingPage onOpenAuthModal={() => setIsAuthModalOpen(true)} />
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          onSuccess={handleAuthSuccess}
+          canClose={true}
+          onClose={() => setIsAuthModalOpen(false)}
+        />
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0b0f19] flex flex-col">
@@ -455,6 +480,14 @@ export default function HomePage() {
             <LocationsView selectedLocationId={selectedLocationId} onLocationsChanged={loadData} />
           )}
           {currentTab === 'audit' && <AuditView />}
+
+          <footer className="mt-12 pt-6 border-t border-slate-800/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+            <span>© {new Date().getFullYear()} ReplySpark — AI-Powered Google Review Management</span>
+            <div className="flex items-center gap-4">
+              <a href="/privacy" className="hover:text-slate-300 transition">Privacy Policy</a>
+              <a href="/terms" className="hover:text-slate-300 transition">Terms of Service</a>
+            </div>
+          </footer>
         </main>
       </div>
 
