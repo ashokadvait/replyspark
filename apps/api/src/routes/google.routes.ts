@@ -74,30 +74,15 @@ export async function googleRoutes(fastify: FastifyInstance) {
   // Discover accounts accessible through the connection
   fastify.get('/accounts', async (request, reply) => {
     const auth = request.auth!;
-    let connection = await prisma.googleConnection.findFirst({
+    const connection = await prisma.googleConnection.findFirst({
       where: { organizationId: auth.organizationId }
     });
 
-    // If in mock mode and no connection yet, auto-create a mock connection for seamless testing
     if (!connection) {
-      if (ENV.GOOGLE_PROVIDER_MODE === 'mock') {
-        connection = await prisma.googleConnection.create({
-          data: {
-            organizationId: auth.organizationId,
-            googleSubjectId: `mock-sub-${Date.now()}`,
-            accountEmail: `${auth.email.split('@')[0]}.biz@gmail.com`,
-            accountName: 'Spark Hospitality Group',
-            encryptedRefreshToken: 'enc_mock_token_abc123',
-            grantedScopes: ['https://www.googleapis.com/auth/business.manage'],
-            connectionStatus: 'CONNECTED'
-          }
-        });
-      } else {
-        return reply.code(400).send({
-          error: 'Not Connected',
-          message: 'No Google connection found. Please connect your Google account via OAuth first.'
-        });
-      }
+      return reply.code(400).send({
+        error: 'Not Connected',
+        message: 'No Google connection found. Please connect your Google account via OAuth first.'
+      });
     }
 
     const client = getGoogleBusinessProfileClient();
@@ -125,27 +110,15 @@ export async function googleRoutes(fastify: FastifyInstance) {
     const client = getGoogleBusinessProfileClient();
     let targetAccount = accountResourceName;
     if (!targetAccount) {
-      if (ENV.GOOGLE_PROVIDER_MODE === 'live') {
-        const accounts = await client.getAccounts(connection.encryptedRefreshToken);
-        if (accounts.length > 0) {
-          targetAccount = accounts[0].name;
-        } else {
-          return reply.send({
-            accountResourceName: null,
-            locations: [],
-            message: 'No Google Business Profile accounts found under this connected Google user.'
-          });
-        }
+      const accounts = await client.getAccounts(connection.encryptedRefreshToken);
+      if (accounts.length > 0) {
+        targetAccount = accounts[0].name;
       } else {
-        try {
-          const accounts = await client.getAccounts(connection.encryptedRefreshToken);
-          if (accounts.length > 0) {
-            targetAccount = accounts[0].name;
-          }
-        } catch (err) {
-          // Fallback to default mock account if fetching fails in mock mode
-        }
-        targetAccount = targetAccount || 'accounts/acc-spark-group-001';
+        return reply.send({
+          accountResourceName: null,
+          locations: [],
+          message: 'No Google Business Profile accounts found under this connected Google user.'
+        });
       }
     }
 

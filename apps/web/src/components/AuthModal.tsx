@@ -68,12 +68,6 @@ export function AuthModal({ isOpen, onSuccess, onClose, canClose = false }: Auth
     }
   };
 
-  const fillDemo = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setError(null);
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
       <div className="w-full max-w-md rounded-3xl bg-[#0f172a] border border-slate-800 p-8 shadow-2xl space-y-6 text-left animate-in fade-in zoom-in-95">
@@ -254,22 +248,6 @@ export function AuthModal({ isOpen, onSuccess, onClose, canClose = false }: Auth
             <span>{mode === 'login' ? 'Sign In to Dashboard' : 'Register & Launch Workspace'}</span>
           </button>
         </form>
-
-        {/* Quick Demo Accounts Helper */}
-        {mode === 'login' && (
-          <div className="pt-3 border-t border-slate-800 text-center space-y-2">
-            <span className="text-[11px] text-slate-400 block">Quick testing accounts:</span>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <button
-                type="button"
-                onClick={() => fillDemo('ashok@advaitlabs.com', 'password123')}
-                className="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-indigo-300 transition cursor-pointer"
-              >
-                Owner: ashok@advaitlabs.com
-              </button>
-            </div>
-          </div>
-        )}
 
         {canClose && onClose && (
           <div className="text-center pt-2">

@@ -132,7 +132,7 @@ export function LocationsView({ selectedLocationId = 'ALL', onLocationsChanged }
     try {
       const connectRes = await ApiClient.connectLocations(googleStatus.connection.id, [
         {
-          googleAccountResourceName: loc.accountResourceName || 'accounts/acc-spark-group-001',
+          googleAccountResourceName: loc.accountResourceName || '',
           googleLocationResourceName: loc.locationName,
           displayName: loc.title,
           address: loc.address,

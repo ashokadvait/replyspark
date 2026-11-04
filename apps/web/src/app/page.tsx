@@ -23,7 +23,7 @@ export default function HomePage() {
   const [ratingFilter, setRatingFilter] = useState<number | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
   const [googleStatus, setGoogleStatus] = useState<any>(null);
-  const [userName, setUserName] = useState('Ashok Advait');
+  const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
