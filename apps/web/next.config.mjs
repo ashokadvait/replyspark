@@ -20,6 +20,13 @@ if (fs.existsSync(rootEnvPath)) {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  outputFileTracingRoot: path.join(process.cwd(), '../../'),
+  outputFileTracingIncludes: {
+    '/api/**/*': [
+      '../../node_modules/.pnpm/@prisma+client*/node_modules/.prisma/client/**/*',
+      '../../node_modules/.pnpm/@prisma+client*/node_modules/@prisma/client/**/*'
+    ]
+  },
   serverExternalPackages: [
     '@replyspark/api',
     '@replyspark/db',
