@@ -4,7 +4,11 @@ import React, { useState, useEffect } from 'react';
 import { Sliders, Plus, Check, Trash2, Shield, Sparkles, AlertCircle } from 'lucide-react';
 import { ApiClient } from '../lib/api';
 
-export function PreferencesView() {
+interface PreferencesViewProps {
+  selectedLocationId?: string;
+}
+
+export function PreferencesView({ selectedLocationId = 'ALL' }: PreferencesViewProps) {
   const [preferences, setPreferences] = useState<{
     activeRules: any[];
     candidateRules: any[];
@@ -21,7 +25,7 @@ export function PreferencesView() {
 
   const fetchPreferences = async () => {
     try {
-      const data = await ApiClient.getPreferences();
+      const data = await ApiClient.getPreferences(selectedLocationId);
       setPreferences(data);
     } catch (err) {
       console.error('Failed to load preferences', err);
@@ -32,7 +36,7 @@ export function PreferencesView() {
 
   useEffect(() => {
     fetchPreferences();
-  }, []);
+  }, [selectedLocationId]);
 
   const handleApproveCandidate = async (id: string) => {
     await ApiClient.approvePreference(id);
@@ -47,7 +51,7 @@ export function PreferencesView() {
   const handleCreateRule = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRuleText.trim()) return;
-    await ApiClient.createPreference(newRuleText, newRuleCategory);
+    await ApiClient.createPreference(newRuleText, newRuleCategory, selectedLocationId);
     setNewRuleText('');
     setIsAdding(false);
     await fetchPreferences();

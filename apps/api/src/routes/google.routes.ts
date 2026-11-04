@@ -154,16 +154,27 @@ export async function googleRoutes(fastify: FastifyInstance) {
     // Also get currently connected locations to show which ones are already active
     const connectedLocations = await prisma.businessLocation.findMany({
       where: { organizationId: auth.organizationId },
-      select: { googleLocationResourceName: true }
+      select: { id: true, googleLocationResourceName: true, address: true }
     });
-    const connectedSet = new Set(connectedLocations.map(l => l.googleLocationResourceName));
+    const connectedMap = new Map(connectedLocations.map(l => [l.googleLocationResourceName, l]));
+
+    // Backfill address on already-connected locations if Google returned a complete address
+    for (const loc of locations) {
+      const existing = connectedMap.get(loc.locationName);
+      if (existing && loc.address && existing.address !== loc.address) {
+        await prisma.businessLocation.update({
+          where: { id: existing.id },
+          data: { address: loc.address }
+        });
+      }
+    }
 
     return reply.send({
       accountResourceName: targetAccount,
       locations: locations.map(loc => ({
         ...loc,
         accountResourceName: targetAccount,
-        isAlreadyConnected: connectedSet.has(loc.locationName)
+        isAlreadyConnected: connectedMap.has(loc.locationName)
       }))
     });
   });
@@ -200,6 +211,7 @@ export async function googleRoutes(fastify: FastifyInstance) {
           googleAccountResourceName: loc.googleAccountResourceName,
           googleConnectionId: connection.id,
           displayName: loc.displayName,
+          ...(loc.address ? { address: loc.address } : {}),
           timezone: loc.timezone,
           connectionStatus: 'CONNECTED'
         },
@@ -209,9 +221,10 @@ export async function googleRoutes(fastify: FastifyInstance) {
           googleAccountResourceName: loc.googleAccountResourceName,
           googleLocationResourceName: loc.googleLocationResourceName,
           displayName: loc.displayName,
+          address: loc.address || null,
           timezone: loc.timezone,
           connectionStatus: 'CONNECTED',
-          lastSyncAt: new Date()
+          lastSyncAt: null
         }
       });
       createdLocations.push(saved);

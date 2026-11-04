@@ -61,7 +61,10 @@ export async function reviewRoutes(fastify: FastifyInstance) {
       prisma.review.count({ where: whereClause }),
       prisma.review.groupBy({
         by: ['workflowStatus'],
-        where: { organizationId: auth.organizationId },
+        where: {
+          organizationId: auth.organizationId,
+          ...(locationId ? { businessLocationId: locationId } : {})
+        },
         _count: { id: true }
       })
     ]);

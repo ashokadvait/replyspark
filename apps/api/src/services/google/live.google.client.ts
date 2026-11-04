@@ -75,9 +75,30 @@ export class LiveGoogleBusinessProfileClient implements IGoogleBusinessProfileCl
     }));
   }
 
+  private formatStorefrontAddress(addr: any, serviceArea?: any): string | undefined {
+    if (addr) {
+      const lines = Array.isArray(addr.addressLines) ? addr.addressLines.filter(Boolean) : [];
+      const parts: string[] = [...lines];
+      if (addr.sublocality) parts.push(addr.sublocality);
+      if (addr.locality) parts.push(addr.locality);
+      const statePostal = [addr.administrativeArea, addr.postalCode].filter(Boolean).join(' ');
+      if (statePostal) parts.push(statePostal);
+      if (addr.regionCode) parts.push(addr.regionCode);
+      const formatted = parts.filter(Boolean).join(', ');
+      if (formatted) return formatted;
+    }
+    const places = serviceArea?.places?.placeInfos
+      ?.map((p: any) => p.placeName)
+      .filter(Boolean);
+    if (places && places.length > 0) {
+      return `Service Area: ${places.slice(0, 3).join(', ')}`;
+    }
+    return undefined;
+  }
+
   async getLocations(refreshToken: string, accountResourceName: string): Promise<GoogleLocationDto[]> {
     const accessToken = await this.getAccessToken(refreshToken);
-    const readMask = 'name,title,storefrontAddress,websiteUri';
+    const readMask = 'name,title,storefrontAddress,serviceArea,websiteUri';
     const res = await fetch(
       `${this.baseBusinessInfoUrl}/${accountResourceName}/locations?readMask=${readMask}`,
       {
@@ -95,7 +116,7 @@ export class LiveGoogleBusinessProfileClient implements IGoogleBusinessProfileCl
       name: loc.name,
       locationName: loc.name,
       title: loc.title,
-      address: loc.storefrontAddress?.addressLines?.join(', '),
+      address: this.formatStorefrontAddress(loc.storefrontAddress, loc.serviceArea),
       websiteUri: loc.websiteUri
     }));
   }

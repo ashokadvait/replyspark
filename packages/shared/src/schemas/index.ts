@@ -63,6 +63,7 @@ export const connectLocationSchema = z.object({
     googleAccountResourceName: z.string(),
     googleLocationResourceName: z.string(),
     displayName: z.string(),
+    address: z.string().optional(),
     timezone: z.string().default('UTC')
   })).min(1, 'Select at least one location to connect')
 });

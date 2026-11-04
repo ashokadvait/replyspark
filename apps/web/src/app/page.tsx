@@ -25,8 +25,6 @@ export default function HomePage() {
   const [userName, setUserName] = useState('Ashok Advait');
   const [userEmail, setUserEmail] = useState('');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [organizations, setOrganizations] = useState<any[]>([]);
-  const [currentOrgId, setCurrentOrgId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -52,37 +50,12 @@ export default function HomePage() {
     try {
       const orgRes = await ApiClient.getOrganizations();
       const orgs = orgRes.organizations || [];
-      setOrganizations(orgs);
-      const active = orgs.find((o) => o.isCurrent) || orgs[0];
-      if (active) {
-        setCurrentOrgId(active.id);
-        ApiClient.setSelectedOrgId(active.id);
+      if (orgs.length > 0) {
+        const primary = orgs.find((o) => o.locationsCount > 0) || orgs[0];
+        ApiClient.setSelectedOrgId(primary.id);
       }
     } catch (err) {
       console.error('Error fetching organizations', err);
-    }
-  };
-
-  const handleSelectOrganization = async (orgId: string) => {
-    setCurrentOrgId(orgId);
-    ApiClient.setSelectedOrgId(orgId);
-    setSelectedLocationId('ALL');
-    setIsLoading(true);
-    await loadData();
-    await loadOrganizations();
-    showToast('Switched organization');
-  };
-
-  const handleCreateOrganization = async (name: string) => {
-    const res = await ApiClient.createOrganization(name);
-    if (res.organization?.id) {
-      ApiClient.setSelectedOrgId(res.organization.id);
-      setCurrentOrgId(res.organization.id);
-      setSelectedLocationId('ALL');
-      setIsLoading(true);
-      await loadOrganizations();
-      await loadData();
-      showToast(`Organization "${name}" created successfully!`);
     }
   };
 
@@ -111,7 +84,6 @@ export default function HomePage() {
 
   const handleSignOut = () => {
     ApiClient.logout();
-    setOrganizations([]);
     setReviews([]);
     setLocations([]);
     setGoogleStatus(null);
@@ -276,6 +248,9 @@ export default function HomePage() {
     }
   };
 
+  const selectedLocation =
+    selectedLocationId !== 'ALL' ? locations.find((l) => l.id === selectedLocationId) : null;
+
   const filterTabs = [
     { id: 'ALL', label: 'All Reviews', count: metrics.ALL || 0 },
     { id: 'PENDING_APPROVAL', label: 'Awaiting Approval', count: metrics.PENDING_APPROVAL || 0, highlight: true },
@@ -304,10 +279,6 @@ export default function HomePage() {
         googleStatus={googleStatus}
         userName={userName}
         userEmail={userEmail}
-        organizations={organizations}
-        currentOrganizationId={currentOrgId}
-        onSelectOrganization={handleSelectOrganization}
-        onCreateOrganization={handleCreateOrganization}
         onSignOut={handleSignOut}
       />
 
@@ -328,9 +299,16 @@ export default function HomePage() {
                 <div>
                   <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
                     Review Inbox
+                    {selectedLocation && (
+                      <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                        {selectedLocation.displayName}
+                      </span>
+                    )}
                   </h1>
-                  <p className="text-xs text-slate-400">
-                    Review proposed AI drafts, edit nuances, and publish authorized replies directly to Google Business Profile.
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {selectedLocation
+                      ? `Showing reviews for ${selectedLocation.displayName}${selectedLocation.address ? ` (${selectedLocation.address})` : ''}`
+                      : 'Review proposed AI drafts, edit nuances, and publish authorized replies directly to Google Business Profile.'}
                   </p>
                 </div>
 
@@ -431,6 +409,27 @@ export default function HomePage() {
                         Go to Google &amp; Locations
                       </button>
                     </>
+                  ) : selectedLocation && (metrics.ALL || 0) === 0 ? (
+                    <>
+                      <h3 className="text-sm font-semibold text-slate-300 mb-1">
+                        No reviews found for {selectedLocation.displayName}
+                      </h3>
+                      {selectedLocation.address && (
+                        <p className="text-xs text-slate-400 mb-1 max-w-md mx-auto">
+                          {selectedLocation.address}
+                        </p>
+                      )}
+                      <p className="text-xs text-slate-500 mb-4 max-w-md mx-auto">
+                        This location currently has 0 customer reviews synced from Google Business Profile.
+                      </p>
+                      <button
+                        onClick={handleSync}
+                        disabled={isSyncing}
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition cursor-pointer disabled:opacity-50"
+                      >
+                        {isSyncing ? 'Syncing...' : `Sync Reviews for ${selectedLocation.displayName}`}
+                      </button>
+                    </>
                   ) : (
                     <>
                       <h3 className="text-sm font-semibold text-slate-300 mb-1">No reviews found</h3>
@@ -439,9 +438,10 @@ export default function HomePage() {
                       </p>
                       <button
                         onClick={handleSync}
-                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition cursor-pointer"
+                        disabled={isSyncing}
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition cursor-pointer disabled:opacity-50"
                       >
-                        Sync Latest Reviews from Google
+                        {isSyncing ? 'Syncing...' : 'Sync Latest Reviews from Google'}
                       </button>
                     </>
                   )}
@@ -450,8 +450,10 @@ export default function HomePage() {
             </div>
           )}
 
-          {currentTab === 'preferences' && <PreferencesView />}
-          {currentTab === 'locations' && <LocationsView />}
+          {currentTab === 'preferences' && <PreferencesView selectedLocationId={selectedLocationId} />}
+          {currentTab === 'locations' && (
+            <LocationsView selectedLocationId={selectedLocationId} onLocationsChanged={loadData} />
+          )}
           {currentTab === 'audit' && <AuditView />}
         </main>
       </div>

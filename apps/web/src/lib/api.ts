@@ -195,8 +195,9 @@ export class ApiClient {
   }
 
   // Preferences
-  public static async getPreferences() {
-    return this.request('/api/v1/preferences');
+  public static async getPreferences(locationId?: string) {
+    const query = locationId && locationId !== 'ALL' ? `?locationId=${encodeURIComponent(locationId)}` : '';
+    return this.request(`/api/v1/preferences${query}`);
   }
 
   public static async approvePreference(id: string) {
@@ -207,10 +208,16 @@ export class ApiClient {
     return this.request(`/api/v1/preferences/${id}/disable`, { method: 'POST', body: JSON.stringify({}) });
   }
 
-  public static async createPreference(ruleText: string, ruleCategory = 'TONE_STYLE') {
+  public static async createPreference(ruleText: string, ruleCategory = 'TONE_STYLE', businessLocationId?: string) {
     return this.request('/api/v1/preferences', {
       method: 'POST',
-      body: JSON.stringify({ ruleText, ruleCategory })
+      body: JSON.stringify({
+        ruleText,
+        ruleCategory,
+        ...(businessLocationId && businessLocationId !== 'ALL'
+          ? { businessLocationId, scope: 'LOCATION' }
+          : {})
+      })
     });
   }
 

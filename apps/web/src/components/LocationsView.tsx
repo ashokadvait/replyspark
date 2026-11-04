@@ -14,13 +14,19 @@ import {
 } from 'lucide-react';
 import { ApiClient } from '../lib/api';
 
-export function LocationsView() {
+interface LocationsViewProps {
+  selectedLocationId?: string;
+  onLocationsChanged?: () => void;
+}
+
+export function LocationsView({ selectedLocationId = 'ALL', onLocationsChanged }: LocationsViewProps) {
   const [locations, setLocations] = useState<any[]>([]);
   const [discoverable, setDiscoverable] = useState<any[]>([]);
   const [googleStatus, setGoogleStatus] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [syncingLocationId, setSyncingLocationId] = useState<string | null>(null);
   const [isConnectingOAuth, setIsConnectingOAuth] = useState(false);
   const [bannerNotice, setBannerNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -94,6 +100,26 @@ export function LocationsView() {
     }
   };
 
+  const handleSyncSingleLocation = async (locId: string, locName: string) => {
+    setSyncingLocationId(locId);
+    try {
+      const syncRes = await ApiClient.syncReviews(locId);
+      await loadData();
+      if (onLocationsChanged) onLocationsChanged();
+      setBannerNotice({
+        type: 'success',
+        message: `Synced "${locName}" — ${syncRes.totalSynced || 0} new reviews fetched from Google.`
+      });
+    } catch (err: any) {
+      setBannerNotice({
+        type: 'error',
+        message: err.message || `Failed to sync reviews for ${locName}`
+      });
+    } finally {
+      setSyncingLocationId(null);
+    }
+  };
+
   const handleConnectLocation = async (loc: any) => {
     if (!googleStatus?.connection?.id) {
       setBannerNotice({
@@ -104,19 +130,29 @@ export function LocationsView() {
     }
     setIsConnecting(true);
     try {
-      await ApiClient.connectLocations(googleStatus.connection.id, [
+      const connectRes = await ApiClient.connectLocations(googleStatus.connection.id, [
         {
           googleAccountResourceName: loc.accountResourceName || 'accounts/acc-spark-group-001',
           googleLocationResourceName: loc.locationName,
           displayName: loc.title,
+          address: loc.address,
           timezone: 'UTC'
         }
       ]);
+      const connectedLoc = connectRes.locations?.[0];
+      if (connectedLoc?.id) {
+        try {
+          await ApiClient.syncReviews(connectedLoc.id);
+        } catch {
+          // Continue even if initial review sync fails
+        }
+      }
       await loadData();
       await handleDiscover();
+      if (onLocationsChanged) onLocationsChanged();
       setBannerNotice({
         type: 'success',
-        message: `Location "${loc.title}" connected successfully!`
+        message: `Location "${loc.title}" connected and synced with Google Business Profile!`
       });
     } catch (err: any) {
       setBannerNotice({
@@ -315,7 +351,11 @@ export function LocationsView() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Active Connected Locations ({locations.length})
+            Active Connected Locations (
+            {selectedLocationId && selectedLocationId !== 'ALL'
+              ? locations.filter((l) => l.id === selectedLocationId).length
+              : locations.length}
+            )
           </h3>
         </div>
 
@@ -329,25 +369,48 @@ export function LocationsView() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {locations.map((loc) => (
+            {(selectedLocationId && selectedLocationId !== 'ALL'
+              ? locations.filter((l) => l.id === selectedLocationId)
+              : locations
+            ).map((loc) => (
               <div
                 key={loc.id}
                 className="p-5 rounded-2xl bg-[#0f172a] border border-slate-800 hover:border-slate-700 transition shadow-lg space-y-3"
               >
-                <div className="flex items-start justify-between">
-                  <div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
                     <h4 className="text-sm font-semibold text-white">{loc.displayName}</h4>
-                    <p className="text-xs text-slate-400 mt-0.5">{loc.address || 'Verified Google storefront'}</p>
+                    <div className="flex items-start gap-1.5 text-xs text-slate-300 leading-relaxed">
+                      <MapPin className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0 mt-0.5" />
+                      <span>{loc.address || 'Address not specified on Google Business Profile'}</span>
+                    </div>
                   </div>
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    <CheckCircle2 className="w-3 h-3" /> Live
-                  </span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => handleSyncSingleLocation(loc.id, loc.displayName)}
+                      disabled={syncingLocationId === loc.id}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 transition cursor-pointer disabled:opacity-50"
+                      title="Sync reviews for this location"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${syncingLocationId === loc.id ? 'animate-spin' : ''}`} />
+                      <span>{syncingLocationId === loc.id ? 'Syncing...' : 'Sync'}</span>
+                    </button>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <CheckCircle2 className="w-3 h-3" /> Live
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between text-[11px] text-slate-400 pt-3 border-t border-slate-800/80">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5 text-slate-500" />
-                    Last synced: {loc.lastSyncAt ? new Date(loc.lastSyncAt).toLocaleTimeString() : 'Never'}
+                    Last synced:{' '}
+                    {loc.lastSyncAt
+                      ? new Date(loc.lastSyncAt).toLocaleString(undefined, {
+                          dateStyle: 'medium',
+                          timeStyle: 'short'
+                        })
+                      : 'Never'}
                   </span>
                   <span className="font-medium text-slate-300">{loc.reviewsCount || 0} reviews synced</span>
                 </div>

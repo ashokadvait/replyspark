@@ -6,15 +6,26 @@ import { authenticate } from '../middleware/auth.js';
 export async function preferenceRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', authenticate);
 
-  // List all preferences for the organization
+  // List all preferences for the organization (optionally filtered by locationId)
   fastify.get('/', async (request, reply) => {
     const auth = request.auth!;
+    const { locationId } = (request.query as { locationId?: string }) || {};
 
     const preferences = await prisma.aiPreference.findMany({
-      where: { organizationId: auth.organizationId },
+      where: {
+        organizationId: auth.organizationId,
+        ...(locationId && locationId !== 'ALL'
+          ? {
+              OR: [
+                { businessLocationId: null },
+                { businessLocationId: locationId }
+              ]
+            }
+          : {})
+      },
       include: {
         businessLocation: {
-          select: { id: true, displayName: true }
+          select: { id: true, displayName: true, address: true }
         },
         creator: {
           select: { id: true, displayName: true, email: true }

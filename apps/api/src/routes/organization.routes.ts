@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '@replyspark/db';
 import { authenticate } from '../middleware/auth.js';
+import { getGoogleBusinessProfileClient } from '../services/google/index.js';
 
 export async function organizationRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', authenticate);
@@ -39,9 +40,10 @@ export async function organizationRoutes(fastify: FastifyInstance) {
   // List locations for the current organization
   fastify.get('/locations', async (request, reply) => {
     const auth = request.auth!;
-    const locations = await prisma.businessLocation.findMany({
+    let locations = await prisma.businessLocation.findMany({
       where: { organizationId: auth.organizationId },
       include: {
+        googleConnection: true,
         _count: {
           select: {
             reviews: true
@@ -50,6 +52,32 @@ export async function organizationRoutes(fastify: FastifyInstance) {
       },
       orderBy: { displayName: 'asc' }
     });
+
+    // Auto-backfill missing address from Google Business Profile if any connected location has no address
+    const missingAddressLocs = locations.filter(l => !l.address && l.googleConnection?.encryptedRefreshToken);
+    if (missingAddressLocs.length > 0) {
+      try {
+        const conn = missingAddressLocs[0].googleConnection!;
+        const accountName = missingAddressLocs[0].googleAccountResourceName;
+        if (conn.encryptedRefreshToken && accountName) {
+          const client = getGoogleBusinessProfileClient();
+          const googleLocs = await client.getLocations(conn.encryptedRefreshToken, accountName);
+          const addrMap = new Map(googleLocs.map(g => [g.locationName, g.address]));
+          for (const loc of missingAddressLocs) {
+            const fullAddr = addrMap.get(loc.googleLocationResourceName);
+            if (fullAddr) {
+              await prisma.businessLocation.update({
+                where: { id: loc.id },
+                data: { address: fullAddr }
+              });
+              loc.address = fullAddr;
+            }
+          }
+        }
+      } catch {
+        // Ignore backfill errors and return existing location records
+      }
+    }
 
     return reply.send({
       locations: locations.map(l => ({
