@@ -73,6 +73,32 @@ export class GeminiAIProvider implements IAIProvider {
             .join('\n')
         : 'No previous replies recorded yet.';
 
+      // Location-specific response templates section
+      const allTemplates = (context.locationTemplates && context.locationTemplates.length > 0)
+        ? context.locationTemplates
+        : context.activePreferences.filter(p => p.ruleCategory === 'LOCATION_TEMPLATE' || p.templateName);
+
+      let locationTemplatesFormatted = '';
+      if (allTemplates.length > 0) {
+        locationTemplatesFormatted = `
+MANDATORY LOCATION-SPECIFIC RESPONSE TEMPLATE / BLUEPRINT:
+The business has specified reply templates for ${context.locationName}. If one matches this review's sentiment/rating, you MUST prioritize following its structure and replacing its placeholders:
+` + allTemplates.map(t => `- Template: "${t.templateName || 'Location Response Template'}" (Target: ${t.targetRating || 'ALL'})\n  Blueprint / Text: "${t.ruleText}"\n  (Replace {reviewer_name} with "${context.reviewerDisplayName || 'there'}", {location_name} with "${context.locationName}", and {business_name} with "${context.businessName}")`).join('\n\n');
+      }
+
+      // Prompt optimization from past human feedback & edits
+      let feedbackLearningsFormatted = '';
+      if (context.feedbackLearnings && context.feedbackLearnings.length > 0) {
+        feedbackLearningsFormatted = `
+PROMPT OPTIMIZATION — HUMAN REFINEMENTS & FEEDBACK LEARNINGS:
+The human review team previously reviewed and corrected AI drafts for this organization. Apply these learnings to avoid repeating previous flaws:
+` + context.feedbackLearnings.slice(0, 5).map((fb, idx) => `Learning #${idx + 1}:
+  - Original AI draft: "${fb.originalGeneratedText}"
+  - Human-refined version: "${fb.correctedText}"
+  - Issue Tag / Explanation: [${fb.feedbackCategory}] ${fb.feedbackText ? `"${fb.feedbackText}"` : ''}
+  => Goal: Emulate the human reviewer's refined style, tone, and conciseness.`).join('\n\n');
+      }
+
       const isAdvait =
         context.businessName.toLowerCase().includes('advait') ||
         context.locationName.toLowerCase().includes('advait');
@@ -82,7 +108,7 @@ export class GeminiAIProvider implements IAIProvider {
         : `You are the AI-powered Google Business Profile Review Response Assistant for "${context.businessName}" (${context.locationName}).`;
 
       const prompt = `${roleDescription}
-Your responsibility is to analyse the incoming Google review, identify the reviewer's category, understand their sentiment and context, learn from our past replies, and generate a natural, human-written, personalised reply using "we" and "our team".
+Your responsibility is to analyse the incoming Google review, identify the reviewer's category, understand their sentiment and context, learn from our past replies and human feedback corrections, and generate a natural, human-written, personalised reply using "we" and "our team".
 
 INCOMING REVIEW DETAILS:
 - Rating: ${context.rating} out of 5 stars
@@ -92,6 +118,8 @@ INCOMING REVIEW DETAILS:
 
 PAST REPLIES GIVEN BY OUR TEAM (Learn our tone, brevity, and reply style from these examples):
 ${existingRepliesFormatted}
+${locationTemplatesFormatted}
+${feedbackLearningsFormatted}
 
 ACTIVE BUSINESS PREFERENCES & LEARNED RULES:
 ${activeRulesFormatted}
@@ -121,6 +149,7 @@ STEP 3 — CATEGORY-SPECIFIC REPLY GUIDELINES:
   * For 1★–2★ rating-only: Thank them for the feedback, express regret that their experience didn't meet expectations, and invite them to share their concerns.
 
 STEP 4 — STRICT RESPONSE RULES:
+- If a MANDATORY LOCATION-SPECIFIC RESPONSE TEMPLATE is provided above, adopt its structure and substitute all template variables ({reviewer_name}, {location_name}, {business_name}) while personalizing to the customer's comment.
 - Sound like a real person representing the company, never a generic chatbot.
 - Keep replies between 20 and 55 words for written reviews, or 8 to 20 words for rating-only reviews.
 - Match the warmth and conciseness shown in PAST REPLIES GIVEN BY OUR TEAM while avoiding robotic repetition.

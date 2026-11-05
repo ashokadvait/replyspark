@@ -1,8 +1,13 @@
-import { AIDraftResult, CandidatePreferenceExtraction, PreferenceScope } from '@replyspark/shared';
+import { AIDraftResult, CandidatePreferenceExtraction, FeedbackLearningExample, PreferenceScope } from '@replyspark/shared';
 
 export interface ActivePreferenceRule {
+  id?: string;
   ruleText: string;
   ruleCategory: string;
+  templateName?: string | null;
+  targetRating?: string | null;
+  businessLocationId?: string | null;
+  locationName?: string | null;
   scope?: PreferenceScope;
 }
 
@@ -22,6 +27,8 @@ export interface ReplyGenerationContext {
   address?: string | null;
   activePreferences: ActivePreferenceRule[];
   existingReplies?: ExistingReplyExample[];
+  locationTemplates?: ActivePreferenceRule[];
+  feedbackLearnings?: FeedbackLearningExample[];
 }
 
 export interface FeedbackContext {
@@ -31,6 +38,7 @@ export interface FeedbackContext {
   finalEditedText?: string | null;
   rating: number;
   businessName: string;
+  locationName?: string | null;
 }
 
 export interface IAIProvider {

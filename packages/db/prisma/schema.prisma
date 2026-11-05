@@ -173,6 +173,7 @@ model BusinessLocation {
   googleConnection GoogleConnection? @relation(fields: [googleConnectionId], references: [id], onDelete: SetNull)
   reviews          Review[]
   aiPreferences    AiPreference[]
+  feedbacks        ReviewFeedback[]
 
   @@unique([organizationId, googleLocationResourceName])
   @@index([organizationId])
@@ -259,7 +260,9 @@ model ReplyApproval {
 model ReviewFeedback {
   id                    String           @id @default(uuid())
   organizationId        String
+  businessLocationId    String?
   replyDraftId          String
+  rating                Int?             // 1-5 rating (e.g. 1=poor, 5=excellent)
   feedbackCategory      FeedbackCategory
   feedbackText          String?
   generatedTextSnapshot String
@@ -268,12 +271,14 @@ model ReviewFeedback {
   createdBy             String
   createdAt             DateTime         @default(now())
 
-  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  replyDraft   ReplyDraft     @relation(fields: [replyDraftId], references: [id], onDelete: Cascade)
-  user         User           @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-  preferences  AiPreference[]
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  businessLocation BusinessLocation? @relation(fields: [businessLocationId], references: [id], onDelete: SetNull)
+  replyDraft       ReplyDraft        @relation(fields: [replyDraftId], references: [id], onDelete: Cascade)
+  user             User              @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  preferences      AiPreference[]
 
   @@index([organizationId])
+  @@index([businessLocationId])
   @@index([replyDraftId])
   @@map("review_feedback")
 }
@@ -282,6 +287,8 @@ model AiPreference {
   id                 String           @id @default(uuid())
   organizationId     String
   businessLocationId String?
+  templateName       String?
+  targetRating       String?          @default("ALL")
   ruleText           String
   ruleCategory       String           @default("TONE_STYLE")
   sourceFeedbackId   String?

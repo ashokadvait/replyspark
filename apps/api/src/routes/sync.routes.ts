@@ -150,6 +150,24 @@ export async function syncRoutes(fastify: FastifyInstance) {
         // Generate draft only if no reply has been given and no draft exists yet
         if (targetReview && !targetReview.ownerReplyText && targetReview.replyDrafts.length === 0) {
           try {
+            const locationTemplates = preferences
+              .filter(p => (p.ruleCategory === 'LOCATION_TEMPLATE' || Boolean(p.templateName)) && (!p.businessLocationId || p.businessLocationId === loc.id))
+              .map(p => ({
+                id: p.id,
+                ruleText: p.ruleText,
+                ruleCategory: p.ruleCategory,
+                templateName: p.templateName,
+                targetRating: p.targetRating,
+                businessLocationId: p.businessLocationId,
+                locationName: loc.displayName
+              }));
+            const activePreferences = preferences
+              .filter(p => p.ruleCategory !== 'LOCATION_TEMPLATE' && !p.templateName && (!p.businessLocationId || p.businessLocationId === loc.id))
+              .map(p => ({
+                ruleText: p.ruleText,
+                ruleCategory: p.ruleCategory
+              }));
+
             const draftResult = await aiProvider.generateReply({
               rating: targetReview.rating,
               reviewText: targetReview.reviewText,
@@ -157,10 +175,8 @@ export async function syncRoutes(fastify: FastifyInstance) {
               businessName: loc.organization.name,
               locationName: loc.displayName,
               address: loc.address,
-              activePreferences: preferences.map(p => ({
-                ruleText: p.ruleText,
-                ruleCategory: p.ruleCategory
-              })),
+              activePreferences,
+              locationTemplates,
               existingReplies
             });
 

@@ -53,6 +53,8 @@ export default function HomePage() {
     draftId: string;
     originalText: string;
     editedText?: string;
+    locationName?: string;
+    locationId?: string;
   }>({
     isOpen: false,
     draftId: '',
@@ -271,19 +273,26 @@ export default function HomePage() {
   const handleSubmitFeedback = async (data: {
     category: string;
     feedbackText: string;
+    correctedText?: string;
     teachAI: boolean;
+    rating: number;
+    scope: 'ORGANIZATION' | 'LOCATION';
   }) => {
     try {
       const res = await ApiClient.submitFeedback({
         draftId: feedbackModal.draftId,
         category: data.category,
         feedbackText: data.feedbackText,
-        teachAI: data.teachAI
+        correctedText: data.correctedText,
+        teachAI: data.teachAI,
+        rating: data.rating,
+        scope: data.scope,
+        businessLocationId: data.scope === 'LOCATION' ? feedbackModal.locationId : undefined
       });
       if (res.candidatePreference) {
-        showToast('Feedback recorded & candidate rule proposed for your confirmation!');
+        showToast('Feedback recorded & candidate rule proposed for your confirmation in AI Learned Rules!');
       } else {
-        showToast('Feedback saved successfully!');
+        showToast('Feedback saved — prompts optimized with your learning example!');
       }
       await loadData();
     } catch (err: any) {
@@ -471,11 +480,15 @@ export default function HomePage() {
                         onRegenerate={handleRegenerate}
                         onReject={handleReject}
                         onGenerateInitial={handleGenerateInitial}
-                        onOpenFeedback={(draftId, currentText) =>
+                        onQuickFeedbackSuccess={showToast}
+                        onOpenFeedback={(draftId, currentText, locName, locId) =>
                           setFeedbackModal({
                             isOpen: true,
                             draftId,
-                            originalText: currentText
+                            originalText: currentText,
+                            editedText: currentText,
+                            locationName: locName,
+                            locationId: locId
                           })
                         }
                       />
@@ -587,7 +600,12 @@ export default function HomePage() {
             </div>
           )}
 
-          {currentTab === 'preferences' && <PreferencesView selectedLocationId={selectedLocationId} />}
+          {currentTab === 'preferences' && (
+            <PreferencesView
+              selectedLocationId={selectedLocationId}
+              locations={locations}
+            />
+          )}
           {currentTab === 'locations' && (
             <LocationsView selectedLocationId={selectedLocationId} onLocationsChanged={loadData} />
           )}
@@ -609,6 +627,9 @@ export default function HomePage() {
         onClose={() => setFeedbackModal({ ...feedbackModal, isOpen: false })}
         draftId={feedbackModal.draftId}
         originalText={feedbackModal.originalText}
+        editedText={feedbackModal.editedText}
+        locationName={feedbackModal.locationName}
+        locationId={feedbackModal.locationId}
         onSubmit={handleSubmitFeedback}
       />
 

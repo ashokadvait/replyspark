@@ -131,6 +131,33 @@ export class MockAIProvider implements IAIProvider {
       qualityNotes.push('Applied active rule: concise 25-60 word structure.');
     }
 
+    // Check for Location Templates
+    const availableTemplates = (context.locationTemplates && context.locationTemplates.length > 0)
+      ? context.locationTemplates
+      : activePreferences.filter(p => p.ruleCategory === 'LOCATION_TEMPLATE' || p.templateName);
+
+    const matchingTemplate = availableTemplates.find(t => {
+      if (!t.targetRating || t.targetRating === 'ALL') return true;
+      if (rating >= 4 && t.targetRating === '5_STAR') return true;
+      if (rating <= 2 && t.targetRating === '1_2_STAR') return true;
+      if (rating === 3 && t.targetRating === '3_STAR') return true;
+      return false;
+    }) || availableTemplates[0];
+
+    if (matchingTemplate) {
+      const formatted = matchingTemplate.ruleText
+        .replace(/\{reviewer_name\}/gi, reviewerDisplayName || 'Valued Guest')
+        .replace(/\{location_name\}/gi, locationName || brandLabel)
+        .replace(/\{business_name\}/gi, businessName || brandLabel);
+      replyText = formatted;
+      rationale = `Generated using Location Template: "${matchingTemplate.templateName || 'Location Response Template'}" scoped to ${locationName}.`;
+      qualityNotes.push(`Applied location template: ${matchingTemplate.templateName || 'Location Blueprint'}`);
+    }
+
+    if (context.feedbackLearnings && context.feedbackLearnings.length > 0) {
+      qualityNotes.push(`Prompt optimized with ${context.feedbackLearnings.length} learned human feedback correction(s).`);
+    }
+
     return {
       replyText,
       rationale,

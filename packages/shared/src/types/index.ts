@@ -96,3 +96,21 @@ export interface CandidatePreferenceExtraction {
   scope: PreferenceScope;
   confidence: number;
 }
+
+export interface FeedbackLearningExample {
+  originalGeneratedText: string;
+  correctedText: string;
+  feedbackCategory: string;
+  feedbackText?: string | null;
+  rating?: number | null;
+  locationName?: string | null;
+}
+
+export interface LocationTemplateRule {
+  id: string;
+  templateName?: string | null;
+  targetRating?: string | null;
+  ruleText: string;
+  businessLocationId?: string | null;
+  businessLocationName?: string | null;
+}

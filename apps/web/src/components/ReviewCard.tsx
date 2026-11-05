@@ -11,8 +11,12 @@ import {
   Send,
   MessageSquare,
   ShieldCheck,
-  Check
+  Check,
+  ThumbsUp,
+  ThumbsDown,
+  Edit3
 } from 'lucide-react';
+import { ApiClient } from '../lib/api';
 
 interface ReviewCardProps {
   review: {
@@ -44,8 +48,9 @@ interface ReviewCardProps {
   onApprove: (draftId: string, replyText: string) => Promise<void>;
   onRegenerate: (reviewId: string) => Promise<void>;
   onReject: (draftId: string) => Promise<void>;
-  onOpenFeedback: (draftId: string, currentText: string) => void;
+  onOpenFeedback: (draftId: string, currentText: string, locationName?: string, locationId?: string) => void;
   onGenerateInitial: (reviewId: string) => Promise<void>;
+  onQuickFeedbackSuccess?: (message: string) => void;
 }
 
 export function ReviewCard({
@@ -54,17 +59,41 @@ export function ReviewCard({
   onRegenerate,
   onReject,
   onOpenFeedback,
-  onGenerateInitial
+  onGenerateInitial,
+  onQuickFeedbackSuccess
 }: ReviewCardProps) {
   const [editText, setEditText] = useState(
     review.latestDraft?.finalText || review.latestDraft?.generatedText || ''
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [ratedStatus, setRatedStatus] = useState<'UP' | 'DOWN' | null>(null);
 
   useEffect(() => {
     setEditText(review.latestDraft?.finalText || review.latestDraft?.generatedText || '');
+    setRatedStatus(null);
   }, [review.latestDraft]);
+
+  const handleQuickRate = async (type: 'UP' | 'DOWN') => {
+    if (!review.latestDraft) return;
+    if (type === 'DOWN') {
+      onOpenFeedback(review.latestDraft.id, editText, review.location?.displayName, review.location?.id);
+      return;
+    }
+    try {
+      setRatedStatus('UP');
+      await ApiClient.quickRateDraft({
+        draftId: review.latestDraft.id,
+        rating: 5,
+        feedbackText: 'Positive feedback: Well generated response aligned with brand voice.'
+      });
+      if (onQuickFeedbackSuccess) {
+        onQuickFeedbackSuccess('Draft feedback recorded — AI response reinforced for future learning!');
+      }
+    } catch (e) {
+      console.error('Quick rate failed', e);
+    }
+  };
 
   const handleApprove = async () => {
     if (!review.latestDraft) return;
@@ -282,10 +311,40 @@ export function ReviewCard({
                       <Sparkles className="w-3.5 h-3.5" /> AI Draft Proposal
                     </span>
                     {getQualityBadge(review.latestDraft.qualityStatus)}
+                    {editText.trim() !== review.latestDraft.generatedText.trim() && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                        <Edit3 className="w-3 h-3" /> Refined by Human
+                      </span>
+                    )}
                   </div>
-                  <span className="text-[10px] text-slate-500">
-                    {review.latestDraft.modelName}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {/* Quick Feedback Thumbs */}
+                    {review.workflowStatus !== 'PUBLISHED' && (
+                      <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => handleQuickRate('UP')}
+                          className={`p-1 rounded text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition cursor-pointer ${
+                            ratedStatus === 'UP' ? 'text-emerald-400 bg-emerald-500/15' : ''
+                          }`}
+                          title="Good proposal (teach AI this style)"
+                        >
+                          <ThumbsUp className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickRate('DOWN')}
+                          className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition cursor-pointer"
+                          title="Needs improvement (give feedback)"
+                        >
+                          <ThumbsDown className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                    <span className="text-[10px] text-slate-500">
+                      {review.latestDraft.modelName}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Quality Notes / Rationale banner */}
@@ -311,7 +370,7 @@ export function ReviewCard({
               <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => onOpenFeedback(review.latestDraft!.id, editText)}
+                  onClick={() => onOpenFeedback(review.latestDraft!.id, editText, review.location?.displayName, review.location?.id)}
                   className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-indigo-400 transition cursor-pointer"
                 >
                   <MessageSquare className="w-3.5 h-3.5" /> Teach AI / Feedback

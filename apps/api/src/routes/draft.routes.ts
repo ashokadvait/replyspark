@@ -123,6 +123,28 @@ export async function draftRoutes(fastify: FastifyInstance) {
       return { approval, updatedReview, pubJob };
     });
 
+    // Auto-record human edit as a feedback learning example for prompt optimization
+    if (replyText.trim() !== draft.generatedText.trim()) {
+      try {
+        await prisma.reviewFeedback.create({
+          data: {
+            organizationId: auth.organizationId,
+            businessLocationId: draft.review.businessLocationId,
+            replyDraftId: draft.id,
+            rating: 4,
+            feedbackCategory: 'OTHER',
+            feedbackText: 'Human reviewer refined AI draft before publishing.',
+            generatedTextSnapshot: draft.generatedText,
+            correctedText: replyText.trim(),
+            scope: 'ORGANIZATION',
+            createdBy: auth.userId
+          }
+        });
+      } catch (err) {
+        console.warn('Could not record edit feedback for prompt optimization:', err);
+      }
+    }
+
     // 2. Perform or queue publication to Google
     if (autoPublish) {
       try {

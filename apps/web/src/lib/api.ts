@@ -165,8 +165,22 @@ export class ApiClient {
     correctedText?: string;
     scope?: string;
     teachAI?: boolean;
+    rating?: number;
+    businessLocationId?: string;
   }) {
     return this.request(`/api/v1/reviews/feedback`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  public static async quickRateDraft(data: {
+    draftId: string;
+    rating: number;
+    category?: string;
+    feedbackText?: string;
+  }) {
+    return this.request(`/api/v1/reviews/quick-rate`, {
       method: 'POST',
       body: JSON.stringify(data)
     });
@@ -230,17 +244,44 @@ export class ApiClient {
     return this.request(`/api/v1/preferences/${id}/disable`, { method: 'POST', body: JSON.stringify({}) });
   }
 
-  public static async createPreference(ruleText: string, ruleCategory = 'TONE_STYLE', businessLocationId?: string) {
+  public static async deletePreference(id: string) {
+    return this.request(`/api/v1/preferences/${id}`, { method: 'DELETE' });
+  }
+
+  public static async createPreference(data: {
+    ruleText: string;
+    ruleCategory?: string;
+    businessLocationId?: string;
+    templateName?: string;
+    targetRating?: string;
+  }) {
     return this.request('/api/v1/preferences', {
       method: 'POST',
       body: JSON.stringify({
-        ruleText,
-        ruleCategory,
-        ...(businessLocationId && businessLocationId !== 'ALL'
-          ? { businessLocationId, scope: 'LOCATION' }
+        ruleText: data.ruleText,
+        ruleCategory: data.ruleCategory || 'TONE_STYLE',
+        templateName: data.templateName,
+        targetRating: data.targetRating || 'ALL',
+        ...(data.businessLocationId && data.businessLocationId !== 'ALL'
+          ? { businessLocationId: data.businessLocationId, scope: 'LOCATION' }
           : {})
       })
     });
+  }
+
+  public static async getFeedbackLog(locationId?: string) {
+    const query = locationId && locationId !== 'ALL' ? `?locationId=${encodeURIComponent(locationId)}` : '';
+    return this.request<{
+      feedbacks: any[];
+      stats: {
+        totalCount: number;
+        positiveCount: number;
+        negativeCount: number;
+        correctedCount: number;
+        categoryCounts: Record<string, number>;
+        satisfactionRate: number;
+      };
+    }>(`/api/v1/preferences/feedback-log${query}`);
   }
 
   // Audit Logs

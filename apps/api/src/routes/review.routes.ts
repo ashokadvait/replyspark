@@ -1,8 +1,99 @@
 import { FastifyInstance } from 'fastify';
 import { prisma, WorkflowStatus, QualityStatus } from '@replyspark/db';
-import { feedbackSchema, reviewQuerySchema } from '@replyspark/shared';
+import { feedbackSchema, quickRateSchema, reviewQuerySchema } from '@replyspark/shared';
 import { authenticate } from '../middleware/auth.js';
 import { getAIProvider } from '../services/ai/index.js';
+
+async function getAIContextData(organizationId: string, businessLocationId?: string) {
+  const [preferences, repliedReviews, recentFeedbacks] = await Promise.all([
+    prisma.aiPreference.findMany({
+      where: {
+        organizationId,
+        status: 'ACTIVE',
+        ...(businessLocationId
+          ? {
+              OR: [
+                { businessLocationId: null },
+                { businessLocationId }
+              ]
+            }
+          : {})
+      },
+      include: {
+        businessLocation: { select: { displayName: true } }
+      }
+    }),
+    prisma.review.findMany({
+      where: {
+        organizationId,
+        ownerReplyText: { not: null }
+      },
+      orderBy: { reviewCreatedAt: 'desc' },
+      take: 8
+    }),
+    prisma.reviewFeedback.findMany({
+      where: {
+        organizationId,
+        correctedText: { not: null },
+        ...(businessLocationId
+          ? {
+              OR: [
+                { businessLocationId: null },
+                { businessLocationId }
+              ]
+            }
+          : {})
+      },
+      include: {
+        businessLocation: { select: { displayName: true } }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5
+    })
+  ]);
+
+  const locationTemplates = preferences
+    .filter(p => p.ruleCategory === 'LOCATION_TEMPLATE' || Boolean(p.templateName))
+    .map(p => ({
+      id: p.id,
+      ruleText: p.ruleText,
+      ruleCategory: p.ruleCategory,
+      templateName: p.templateName,
+      targetRating: p.targetRating,
+      businessLocationId: p.businessLocationId,
+      locationName: p.businessLocation?.displayName
+    }));
+
+  const generalPreferences = preferences
+    .filter(p => p.ruleCategory !== 'LOCATION_TEMPLATE' && !p.templateName)
+    .map(p => ({
+      ruleText: p.ruleText,
+      ruleCategory: p.ruleCategory
+    }));
+
+  const existingReplies = repliedReviews.map(r => ({
+    rating: r.rating,
+    reviewText: r.reviewText,
+    reviewerDisplayName: r.reviewerDisplayName,
+    ownerReplyText: r.ownerReplyText!
+  }));
+
+  const feedbackLearnings = recentFeedbacks.map(fb => ({
+    originalGeneratedText: fb.generatedTextSnapshot,
+    correctedText: fb.correctedText!,
+    feedbackCategory: fb.feedbackCategory,
+    feedbackText: fb.feedbackText,
+    rating: fb.rating,
+    locationName: fb.businessLocation?.displayName
+  }));
+
+  return {
+    locationTemplates,
+    generalPreferences,
+    existingReplies,
+    feedbackLearnings
+  };
+}
 
 export async function reviewRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', authenticate);
@@ -168,36 +259,8 @@ export async function reviewRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // Fetch active AI preferences and existing given replies for style learning
-    const [preferences, repliedReviews] = await Promise.all([
-      prisma.aiPreference.findMany({
-        where: {
-          organizationId: auth.organizationId,
-          status: 'ACTIVE',
-          OR: [
-            { businessLocationId: null },
-            { businessLocationId: review.businessLocationId }
-          ]
-        }
-      }),
-      prisma.review.findMany({
-        where: {
-          organizationId: auth.organizationId,
-          ownerReplyText: { not: null }
-        },
-        orderBy: { reviewCreatedAt: 'desc' },
-        take: 10
-      })
-    ]);
-
-    const existingReplies = repliedReviews
-      .filter(r => Boolean(r.ownerReplyText))
-      .map(r => ({
-        rating: r.rating,
-        reviewText: r.reviewText,
-        reviewerDisplayName: r.reviewerDisplayName,
-        ownerReplyText: r.ownerReplyText!
-      }));
+    const { locationTemplates, generalPreferences, existingReplies, feedbackLearnings } =
+      await getAIContextData(auth.organizationId, review.businessLocationId);
 
     const aiProvider = getAIProvider();
     const result = await aiProvider.generateReply({
@@ -207,10 +270,9 @@ export async function reviewRoutes(fastify: FastifyInstance) {
       businessName: review.organization.name,
       locationName: review.businessLocation.displayName,
       address: review.businessLocation.address,
-      activePreferences: preferences.map(p => ({
-        ruleText: p.ruleText,
-        ruleCategory: p.ruleCategory
-      })),
+      activePreferences: generalPreferences,
+      locationTemplates,
+      feedbackLearnings,
       existingReplies
     });
 
@@ -271,35 +333,8 @@ export async function reviewRoutes(fastify: FastifyInstance) {
       return reply.code(404).send({ error: 'Not Found', message: 'Review not found' });
     }
 
-    const [preferences, repliedReviews] = await Promise.all([
-      prisma.aiPreference.findMany({
-        where: {
-          organizationId: auth.organizationId,
-          status: 'ACTIVE',
-          OR: [
-            { businessLocationId: null },
-            { businessLocationId: review.businessLocationId }
-          ]
-        }
-      }),
-      prisma.review.findMany({
-        where: {
-          organizationId: auth.organizationId,
-          ownerReplyText: { not: null }
-        },
-        orderBy: { reviewCreatedAt: 'desc' },
-        take: 10
-      })
-    ]);
-
-    const existingReplies = repliedReviews
-      .filter(r => Boolean(r.ownerReplyText))
-      .map(r => ({
-        rating: r.rating,
-        reviewText: r.reviewText,
-        reviewerDisplayName: r.reviewerDisplayName,
-        ownerReplyText: r.ownerReplyText!
-      }));
+    const { locationTemplates, generalPreferences, existingReplies, feedbackLearnings } =
+      await getAIContextData(auth.organizationId, review.businessLocationId);
 
     const aiProvider = getAIProvider();
     const result = await aiProvider.generateReply({
@@ -309,10 +344,9 @@ export async function reviewRoutes(fastify: FastifyInstance) {
       businessName: review.organization.name,
       locationName: review.businessLocation.displayName,
       address: review.businessLocation.address,
-      activePreferences: preferences.map(p => ({
-        ruleText: p.ruleText,
-        ruleCategory: p.ruleCategory
-      })),
+      activePreferences: generalPreferences,
+      locationTemplates,
+      feedbackLearnings,
       existingReplies
     });
 
@@ -348,7 +382,7 @@ export async function reviewRoutes(fastify: FastifyInstance) {
       return reply.code(400).send({ error: 'Validation Error', details: parseResult.error.flatten() });
     }
 
-    const { draftId, category, feedbackText, correctedText, scope, teachAI } = parseResult.data;
+    const { draftId, category, feedbackText, correctedText, scope, teachAI, rating } = parseResult.data;
 
     const draft = await prisma.replyDraft.findFirst({
       where: { id: draftId, organizationId: auth.organizationId },
@@ -366,11 +400,13 @@ export async function reviewRoutes(fastify: FastifyInstance) {
     const feedback = await prisma.reviewFeedback.create({
       data: {
         organizationId: auth.organizationId,
+        businessLocationId: draft.review.businessLocationId,
         replyDraftId: draft.id,
+        rating: rating || 2,
         feedbackCategory: category,
         feedbackText,
         generatedTextSnapshot: draft.generatedText,
-        correctedText,
+        correctedText: correctedText || (draft.finalText !== draft.generatedText ? draft.finalText : null),
         scope,
         createdBy: auth.userId
       }
@@ -413,6 +449,50 @@ export async function reviewRoutes(fastify: FastifyInstance) {
     });
   });
 
+  // Fast Thumbs-Up / Thumbs-Down rating on a draft
+  fastify.post('/quick-rate', async (request, reply) => {
+    const auth = request.auth!;
+    const parseResult = quickRateSchema.safeParse(request.body);
+
+    if (!parseResult.success) {
+      return reply.code(400).send({ error: 'Validation Error', details: parseResult.error.flatten() });
+    }
+
+    const { draftId, rating, category, feedbackText } = parseResult.data;
+
+    const draft = await prisma.replyDraft.findFirst({
+      where: { id: draftId, organizationId: auth.organizationId },
+      include: {
+        review: true
+      }
+    });
+
+    if (!draft) {
+      return reply.code(404).send({ error: 'Not Found', message: 'Draft not found' });
+    }
+
+    const feedback = await prisma.reviewFeedback.create({
+      data: {
+        organizationId: auth.organizationId,
+        businessLocationId: draft.review.businessLocationId,
+        replyDraftId: draft.id,
+        rating,
+        feedbackCategory: category,
+        feedbackText: feedbackText || (rating >= 4 ? 'Positive draft rating' : 'Flagged as needing improvement'),
+        generatedTextSnapshot: draft.generatedText,
+        correctedText: draft.finalText !== draft.generatedText ? draft.finalText : null,
+        scope: 'ORGANIZATION',
+        createdBy: auth.userId
+      }
+    });
+
+    return reply.send({
+      success: true,
+      feedbackId: feedback.id,
+      rating
+    });
+  });
+
   // Generate drafts for all unreplied reviews that don't have drafts yet
   fastify.post('/generate-unreplied', async (request, reply) => {
     const auth = request.auth!;
@@ -444,37 +524,17 @@ export async function reviewRoutes(fastify: FastifyInstance) {
       });
     }
 
-    const [preferences, repliedReviews] = await Promise.all([
-      prisma.aiPreference.findMany({
-        where: {
-          organizationId: auth.organizationId,
-          status: 'ACTIVE'
-        }
-      }),
-      prisma.review.findMany({
-        where: {
-          organizationId: auth.organizationId,
-          ownerReplyText: { not: null }
-        },
-        orderBy: { reviewCreatedAt: 'desc' },
-        take: 10
-      })
-    ]);
-
-    const existingReplies = repliedReviews
-      .filter((r) => Boolean(r.ownerReplyText))
-      .map((r) => ({
-        rating: r.rating,
-        reviewText: r.reviewText,
-        reviewerDisplayName: r.reviewerDisplayName,
-        ownerReplyText: r.ownerReplyText!
-      }));
+    const { locationTemplates, generalPreferences, existingReplies, feedbackLearnings } =
+      await getAIContextData(auth.organizationId, locationId && locationId !== 'ALL' ? locationId : undefined);
 
     const aiProvider = getAIProvider();
     let generatedCount = 0;
 
     for (const rev of unrepliedReviews) {
       try {
+        const revTemplates = locationTemplates.filter(
+          (t) => !t.businessLocationId || t.businessLocationId === rev.businessLocationId
+        );
         const result = await aiProvider.generateReply({
           rating: rev.rating,
           reviewText: rev.reviewText,
@@ -482,9 +542,9 @@ export async function reviewRoutes(fastify: FastifyInstance) {
           businessName: rev.organization.name,
           locationName: rev.businessLocation.displayName,
           address: rev.businessLocation.address,
-          activePreferences: preferences
-            .filter((p) => !p.businessLocationId || p.businessLocationId === rev.businessLocationId)
-            .map((p) => ({ ruleText: p.ruleText, ruleCategory: p.ruleCategory })),
+          activePreferences: generalPreferences,
+          locationTemplates: revTemplates,
+          feedbackLearnings,
           existingReplies
         });
 
