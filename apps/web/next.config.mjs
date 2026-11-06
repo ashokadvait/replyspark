@@ -20,6 +20,9 @@ if (fs.existsSync(rootEnvPath)) {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  env: {
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+  },
   outputFileTracingRoot: path.join(process.cwd(), '../../'),
   outputFileTracingIncludes: {
     '/api/**/*': [

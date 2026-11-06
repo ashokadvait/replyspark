@@ -93,6 +93,9 @@ export default function HomePage() {
         setUserName(me.user.displayName);
         setUserEmail(me.user.email);
       }
+      if (me.currentOrganizationId && !ApiClient.getSelectedOrgId()) {
+        ApiClient.setSelectedOrgId(me.currentOrganizationId);
+      }
       setIsAuthenticated(true);
       return true;
     } catch (e) {
@@ -158,36 +161,45 @@ export default function HomePage() {
   }, [statusFilter, selectedLocationId, ratingFilter, searchQuery, currentPage, pageSize]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const urlToken = params.get('token');
-      const googleError = params.get('google_error');
-      const connected = params.get('connected');
+    const handleInitialAuth = async () => {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const urlToken = params.get('token');
+        const googleError = params.get('google_error');
+        const connected = params.get('connected');
 
-      if (urlToken) {
-        ApiClient.setToken(urlToken);
-        setIsAuthModalOpen(false);
+        if (urlToken) {
+          ApiClient.setToken(urlToken);
+          setIsAuthModalOpen(false);
+        }
+
+        if (googleError) {
+          showToast(`Google Sign-In failed: ${decodeURIComponent(googleError)}`);
+        } else if (connected === 'google') {
+          showToast('Google Business Profile connected successfully!');
+          setCurrentTab('locations');
+        }
+
+        if (urlToken || googleError || connected) {
+          window.history.replaceState({}, '', window.location.pathname);
+        }
       }
 
-      if (googleError) {
-        showToast(`Google Sign-In failed: ${decodeURIComponent(googleError)}`);
-      } else if (connected === 'google') {
-        showToast('Google Business Profile connected successfully!');
-      }
-
-      if (urlToken || googleError || connected) {
-        window.history.replaceState({}, '', window.location.pathname);
-      }
-    }
-
-    initAuth().then(async (isAuthenticated) => {
-      if (isAuthenticated) {
-        setIsAuthModalOpen(false);
+      const authed = await initAuth();
+      if (authed) {
         await loadOrganizations();
-        await loadData();
       }
-    });
-  }, [loadData]);
+      setIsLoading(false);
+    };
+
+    handleInitialAuth();
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadData();
+    }
+  }, [isAuthenticated, loadData]);
 
   // Sync Google Reviews
   const handleSync = async () => {
@@ -310,6 +322,17 @@ export default function HomePage() {
     { id: 'PUBLISHED', label: 'Published', count: metrics.PUBLISHED || 0 },
     { id: 'REJECTED', label: 'Rejected', count: metrics.REJECTED || 0 },
   ];
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#0b0f19] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-slate-400">Loading ReplySpark...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (

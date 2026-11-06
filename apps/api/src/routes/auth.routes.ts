@@ -456,7 +456,12 @@ export async function authRoutes(fastify: FastifyInstance) {
         }
       });
 
-      return reply.redirect(`${ENV.WEB_URL}?connected=google`);
+      const token = stateData.userId ? fastify.jwt.sign({ userId: stateData.userId }, { expiresIn: '7d' }) : undefined;
+      const redirectUrl = token
+        ? `${ENV.WEB_URL}?token=${encodeURIComponent(token)}&connected=google`
+        : `${ENV.WEB_URL}?connected=google`;
+
+      return reply.redirect(redirectUrl);
     } catch (err: any) {
       return reply.redirect(`${ENV.WEB_URL}?google_error=${encodeURIComponent(err.message || 'connection_failed')}`);
     }
