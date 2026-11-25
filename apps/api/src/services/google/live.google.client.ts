@@ -58,22 +58,44 @@ export class LiveGoogleBusinessProfileClient implements IGoogleBusinessProfileCl
 
   async getAccounts(refreshToken: string): Promise<GoogleAccountDto[]> {
     const accessToken = await this.getAccessToken(refreshToken);
-    const res = await fetch(`${this.baseAccountUrl}/accounts`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
+    const allAccounts: GoogleAccountDto[] = [];
+    let nextPageToken: string | undefined = undefined;
+    let pageCount = 0;
+    const maxPages = 50;
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Google GBP Accounts error: ${this.parseGoogleError(res.status, errText)}`);
-    }
+    do {
+      pageCount++;
+      const url = new URL(`${this.baseAccountUrl}/accounts`);
+      url.searchParams.set('pageSize', '20');
+      if (nextPageToken) {
+        url.searchParams.set('pageToken', nextPageToken);
+      }
 
-    const data = await res.json();
-    return (data.accounts || []).map((acc: any) => ({
-      name: acc.name,
-      accountName: acc.accountName,
-      type: acc.type,
-      role: acc.role
-    }));
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Google GBP Accounts error: ${this.parseGoogleError(res.status, errText)}`);
+      }
+
+      const data = await res.json();
+      const pageAccounts = (data.accounts || []).map((acc: any) => ({
+        name: acc.name,
+        accountName: acc.accountName,
+        type: acc.type,
+        role: acc.role
+      }));
+      allAccounts.push(...pageAccounts);
+
+      nextPageToken =
+        data.nextPageToken && typeof data.nextPageToken === 'string' && data.nextPageToken.trim() !== ''
+          ? data.nextPageToken.trim()
+          : undefined;
+    } while (nextPageToken && pageCount < maxPages);
+
+    return allAccounts;
   }
 
   private formatStorefrontAddress(addr: any, serviceArea?: any): string | undefined {
@@ -100,26 +122,46 @@ export class LiveGoogleBusinessProfileClient implements IGoogleBusinessProfileCl
   async getLocations(refreshToken: string, accountResourceName: string): Promise<GoogleLocationDto[]> {
     const accessToken = await this.getAccessToken(refreshToken);
     const readMask = 'name,title,storefrontAddress,serviceArea,websiteUri';
-    const res = await fetch(
-      `${this.baseBusinessInfoUrl}/${accountResourceName}/locations?readMask=${readMask}`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` }
+    const allLocations: GoogleLocationDto[] = [];
+    let nextPageToken: string | undefined = undefined;
+    let pageCount = 0;
+    const maxPages = 100; // Safeguard up to 10,000 locations (100 per page * 100)
+
+    do {
+      pageCount++;
+      const url = new URL(`${this.baseBusinessInfoUrl}/${accountResourceName}/locations`);
+      url.searchParams.set('readMask', readMask);
+      url.searchParams.set('pageSize', '100');
+      if (nextPageToken) {
+        url.searchParams.set('pageToken', nextPageToken);
       }
-    );
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Google GBP Locations error: ${this.parseGoogleError(res.status, errText)}`);
-    }
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
 
-    const data = await res.json();
-    return (data.locations || []).map((loc: any) => ({
-      name: loc.name,
-      locationName: loc.name,
-      title: loc.title,
-      address: this.formatStorefrontAddress(loc.storefrontAddress, loc.serviceArea),
-      websiteUri: loc.websiteUri
-    }));
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Google GBP Locations error: ${this.parseGoogleError(res.status, errText)}`);
+      }
+
+      const data = await res.json();
+      const pageLocations = (data.locations || []).map((loc: any) => ({
+        name: loc.name,
+        locationName: loc.name,
+        title: loc.title,
+        address: this.formatStorefrontAddress(loc.storefrontAddress, loc.serviceArea),
+        websiteUri: loc.websiteUri
+      }));
+      allLocations.push(...pageLocations);
+
+      nextPageToken =
+        data.nextPageToken && typeof data.nextPageToken === 'string' && data.nextPageToken.trim() !== ''
+          ? data.nextPageToken.trim()
+          : undefined;
+    } while (nextPageToken && pageCount < maxPages);
+
+    return allLocations;
   }
 
   async fetchReviews(
