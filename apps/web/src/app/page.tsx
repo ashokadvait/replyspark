@@ -93,8 +93,14 @@ export default function HomePage() {
         setUserName(me.user.displayName);
         setUserEmail(me.user.email);
       }
-      if (me.currentOrganizationId && !ApiClient.getSelectedOrgId()) {
-        ApiClient.setSelectedOrgId(me.currentOrganizationId);
+      const memberOrgIds = (me.memberships || []).map((m: any) => m.organizationId);
+      const currentSelected = ApiClient.getSelectedOrgId();
+      if (!currentSelected || !memberOrgIds.includes(currentSelected)) {
+        if (me.currentOrganizationId) {
+          ApiClient.setSelectedOrgId(me.currentOrganizationId);
+        } else if (memberOrgIds.length > 0) {
+          ApiClient.setSelectedOrgId(memberOrgIds[0]);
+        }
       }
       setIsAuthenticated(true);
       return true;

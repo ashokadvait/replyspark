@@ -1,9 +1,17 @@
 function getApiUrl(): string {
+  if (typeof window !== 'undefined') {
+    const envUrl = process.env.NEXT_PUBLIC_API_URL;
+    // If running in browser on a remote host (e.g. Vercel), don't use localhost API URL
+    if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
+      return envUrl.replace(/\/$/, '');
+    }
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return (envUrl || window.location.origin).replace(/\/$/, '');
+    }
+    return window.location.origin;
+  }
   if (process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
-  }
-  if (typeof window !== 'undefined') {
-    return window.location.origin;
   }
   return '';
 }

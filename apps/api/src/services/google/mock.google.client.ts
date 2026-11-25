@@ -1,4 +1,5 @@
 import {
+  FetchReviewsOptions,
   GoogleAccountDto,
   GoogleLocationDto,
   IGoogleBusinessProfileClient,
@@ -65,11 +66,12 @@ export class MockGoogleBusinessProfileClient implements IGoogleBusinessProfileCl
   async fetchReviews(
     _refreshToken: string,
     _locationResourceName: string,
-    _accountResourceName?: string
+    _accountResourceName?: string,
+    options?: FetchReviewsOptions
   ): Promise<SyncedReviewDto[]> {
     // Generate simulated incoming reviews on sync
     const now = new Date();
-    return [
+    const reviews: SyncedReviewDto[] = [
       {
         googleReviewResourceName: `reviews/rev-sync-${Date.now()}-01`,
         rating: 5,
@@ -87,6 +89,12 @@ export class MockGoogleBusinessProfileClient implements IGoogleBusinessProfileCl
         reviewCreatedAt: new Date(now.getTime() - 1000 * 60 * 120) // 2 hours ago
       }
     ];
+
+    if (options?.onPage) {
+      await options.onPage(reviews, 1);
+    }
+
+    return reviews;
   }
 
   async publishReply(

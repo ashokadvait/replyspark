@@ -1,5 +1,6 @@
 import { ENV } from '../../config/env.js';
 import {
+  FetchReviewsOptions,
   GoogleAccountDto,
   GoogleLocationDto,
   IGoogleBusinessProfileClient,
@@ -124,7 +125,8 @@ export class LiveGoogleBusinessProfileClient implements IGoogleBusinessProfileCl
   async fetchReviews(
     refreshToken: string,
     locationResourceName: string,
-    accountResourceName?: string
+    accountResourceName?: string,
+    options?: FetchReviewsOptions
   ): Promise<SyncedReviewDto[]> {
     const accessToken = await this.getAccessToken(refreshToken);
 
@@ -144,15 +146,17 @@ export class LiveGoogleBusinessProfileClient implements IGoogleBusinessProfileCl
         : `${this.baseReviewsUrl}/${locationResourceName}/reviews`;
     }
 
-    const allRawReviews: any[] = [];
+    const allMappedReviews: SyncedReviewDto[] = [];
     let nextPageToken: string | undefined = undefined;
     let pageCount = 0;
-    const maxPages = 200; // Safeguard up to 10,000 reviews (50 per page * 200)
+    const maxPages = options?.maxPages ?? 200; // Safeguard up to 10,000 reviews
+    const pageSize = Math.min(Math.max(options?.pageSize ?? 50, 1), 50); // Hard limit 50 enforced by Google
+    const delayMs = options?.delayMs ?? 150; // Throttle between pages to prevent hitting burst rate limits (429)
 
     do {
       pageCount++;
       const url = new URL(baseUrl);
-      url.searchParams.set('pageSize', '50');
+      url.searchParams.set('pageSize', pageSize.toString());
       if (nextPageToken) {
         url.searchParams.set('pageToken', nextPageToken);
       }
@@ -167,27 +171,43 @@ export class LiveGoogleBusinessProfileClient implements IGoogleBusinessProfileCl
       }
 
       const data = await res.json();
-      if (Array.isArray(data.reviews)) {
-        allRawReviews.push(...data.reviews);
+      const rawReviews = Array.isArray(data.reviews) ? data.reviews : [];
+
+      const pageMapped: SyncedReviewDto[] = rawReviews.map((rev: any) => ({
+        googleReviewResourceName: rev.name,
+        rating: this.mapGoogleRating(rev.starRating),
+        reviewText: rev.comment,
+        reviewerDisplayName: rev.reviewer?.displayName,
+        reviewerPhotoUrl: rev.reviewer?.profilePhotoUrl,
+        reviewCreatedAt: new Date(rev.createTime),
+        googleUpdatedAt: rev.updateTime ? new Date(rev.updateTime) : undefined,
+        ownerReplyText: rev.reviewReply?.comment,
+        ownerReplyCommittedAt: rev.reviewReply?.updateTime ? new Date(rev.reviewReply.updateTime) : undefined
+      }));
+
+      allMappedReviews.push(...pageMapped);
+
+      // Incremental callback: allows caller to stream reviews directly into DB and abort early
+      if (options?.onPage) {
+        const shouldContinue = await options.onPage(pageMapped, pageCount);
+        if (shouldContinue === false) {
+          // Early termination triggered (e.g. encountering previously synced reviews)
+          break;
+        }
       }
 
       nextPageToken =
         data.nextPageToken && typeof data.nextPageToken === 'string' && data.nextPageToken.trim() !== ''
           ? data.nextPageToken.trim()
           : undefined;
+
+      // Throttle delay before next page request to respect Google GBP quotas
+      if (nextPageToken && pageCount < maxPages && delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
     } while (nextPageToken && pageCount < maxPages);
 
-    return allRawReviews.map((rev: any) => ({
-      googleReviewResourceName: rev.name,
-      rating: this.mapGoogleRating(rev.starRating),
-      reviewText: rev.comment,
-      reviewerDisplayName: rev.reviewer?.displayName,
-      reviewerPhotoUrl: rev.reviewer?.profilePhotoUrl,
-      reviewCreatedAt: new Date(rev.createTime),
-      googleUpdatedAt: rev.updateTime ? new Date(rev.updateTime) : undefined,
-      ownerReplyText: rev.reviewReply?.comment,
-      ownerReplyCommittedAt: rev.reviewReply?.updateTime ? new Date(rev.reviewReply.updateTime) : undefined
-    }));
+    return allMappedReviews;
   }
 
   async publishReply(

@@ -43,7 +43,7 @@ async function ensureQueues() {
 }
 
 export class QueueService {
-  static async enqueueDraftGeneration(reviewId: string, organizationId: string): Promise<void> {
+  static async enqueueDraftGeneration(reviewId: string, organizationId: string): Promise<boolean> {
     await ensureQueues();
     if (draftGenerationQueue) {
       try {
@@ -51,11 +51,12 @@ export class QueueService {
           attempts: 3,
           backoff: { type: 'exponential', delay: 1000 }
         });
-        return;
+        return true;
       } catch {
         console.warn('[Queue] Could not enqueue to Redis, will process in-band if needed.');
       }
     }
+    return false;
   }
 
   static async enqueueReplyPublication(publicationJobId: string, organizationId: string): Promise<void> {

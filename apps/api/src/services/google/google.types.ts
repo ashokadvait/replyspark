@@ -33,10 +33,26 @@ export interface PublishReplyResult {
   rawResponse?: any;
 }
 
+export interface FetchReviewsOptions {
+  pageSize?: number;
+  delayMs?: number;
+  maxPages?: number;
+  /**
+   * Callback executed after each page of reviews is fetched from Google.
+   * Return `false` to gracefully stop further pagination early (e.g. when encountering reviews already synced).
+   */
+  onPage?: (pageReviews: SyncedReviewDto[], pageIndex: number) => Promise<boolean | void>;
+}
+
 export interface IGoogleBusinessProfileClient {
   getAccounts(refreshToken: string): Promise<GoogleAccountDto[]>;
   getLocations(refreshToken: string, accountResourceName: string): Promise<GoogleLocationDto[]>;
-  fetchReviews(refreshToken: string, locationResourceName: string, accountResourceName?: string): Promise<SyncedReviewDto[]>;
+  fetchReviews(
+    refreshToken: string,
+    locationResourceName: string,
+    accountResourceName?: string,
+    options?: FetchReviewsOptions
+  ): Promise<SyncedReviewDto[]>;
   publishReply(
     refreshToken: string,
     locationResourceName: string,
